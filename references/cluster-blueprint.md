@@ -936,7 +936,7 @@ curl -fsSI 'https://sub.example.com/clash/<subId>' |
 
 curl -fsS 'https://sub.example.com/clash/<subId>' -o /tmp/linkray-clash.yaml
 grep -nE '^(mixed-port|proxies|proxy-groups|rule-providers|rules):' /tmp/linkray-clash.yaml
-grep -nE '^[[:space:]]*- name: (AUTO|自动选择|故障转移|负载均衡|节点选择|流媒体|手动切换|全球代理|DNS_Proxy|Telegram|Google|YouTube|Netflix|Spotify|HBO|Bing|OpenAI|ClaudeAI|Disney|GitHub|国内媒体|本地直连|漏网之鱼)$' /tmp/linkray-clash.yaml
+grep -nE '^[[:space:]]*- name: (自动选择|故障转移|负载均衡|节点选择|流媒体|手动切换|全球代理|DNS_Proxy|Telegram|Google|YouTube|Netflix|Spotify|HBO|Bing|OpenAI|ClaudeAI|Disney|GitHub|国内媒体|本地直连|漏网之鱼)$' /tmp/linkray-clash.yaml
 python3 - <<'PY'
 import yaml
 with open('/tmp/linkray-clash.yaml') as f:
@@ -1109,7 +1109,6 @@ When routing rules are requested, the wrapper should add visible strategy groups
 Required strategy groups for the full profile:
 
 ```text
-AUTO
 自动选择
 故障转移
 负载均衡
@@ -1319,7 +1318,7 @@ rules:
   - MATCH,漏网之鱼
 ```
 
-Validate with `mihomo -t`. If the client only shows `PROXY` and `AUTO`, it is still using an old cached profile or the wrapper is returning only generic groups. Delete and re-import the subscription after changing the wrapper.
+Validate with `mihomo -t`. If the client only shows `PROXY`, or still shows a duplicate English `AUTO` group after the wrapper was changed, it is using an old cached profile or the wrapper is returning generic groups. Delete and re-import the subscription after changing the wrapper.
 
 ```nginx
 server {
@@ -1384,7 +1383,7 @@ with open('/tmp/linkray-store.yaml') as f:
 for proxy in data.get('proxies', []):
     print(proxy.get('name'), proxy.get('type'), proxy.get('server'), proxy.get('network'), bool(proxy.get('reality-opts')))
 PY
-grep -nE '^[[:space:]]*- name: (AUTO|自动选择|故障转移|负载均衡|节点选择|流媒体|手动切换|全球代理|DNS_Proxy|Telegram|Google|YouTube|Netflix|Spotify|HBO|Bing|OpenAI|ClaudeAI|Disney|GitHub|国内媒体|本地直连|漏网之鱼)$' /tmp/linkray-store.yaml
+grep -nE '^[[:space:]]*- name: (自动选择|故障转移|负载均衡|节点选择|流媒体|手动切换|全球代理|DNS_Proxy|Telegram|Google|YouTube|Netflix|Spotify|HBO|Bing|OpenAI|ClaudeAI|Disney|GitHub|国内媒体|本地直连|漏网之鱼)$' /tmp/linkray-store.yaml
 grep -nE '^(rule-providers|rules):|RULE-SET' /tmp/linkray-store.yaml
 grep -c '^[[:space:]]*name: ' /tmp/linkray-store.yaml
 mihomo -t -f /tmp/linkray-store.yaml
