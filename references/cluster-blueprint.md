@@ -432,11 +432,14 @@ Use distinct tags/remarks. If using Cloudflare, keep protocol/transport compatib
 | Protocol | Good default | Notes |
 |---|---|---|
 | VLESS | XHTTP + TLS + Nginx path | Best fit for Cloudflare/CDN fronting |
+| VLESS WS | WS + TLS + Nginx path | Compatibility fallback on `443/tcp`; prefer XHTTP for new CDN paths |
 | VLESS Reality | TCP + Reality direct | DNS-only direct hostname; do not orange-cloud |
+| VLESS Reality Vision | TCP + Reality direct + Vision flow | Good direct profile when the client supports Vision |
 | Trojan Reality | TCP + Reality direct | Supported by 3X-UI share links; DNS-only direct hostname |
 | Hysteria2 | Hysteria transport + TLS direct | UDP/QUIC; must listen on UDP, not TCP |
 | Trojan | TLS direct | Usually DNS-only unless fallback/SNI is designed |
 | Shadowsocks 2022 | Direct port | Do not route through Cloudflare HTTP proxy |
+| TUIC v5 | Sidecar only | Not a native Xray/3X-UI inbound; use sing-box or tuic-server only when explicitly requested |
 
 Reality is not a blanket switch for every protocol. For "all protocols should have Reality", create Reality-capable VLESS/Trojan profiles and keep Hysteria2 and Shadowsocks as their own direct protocols.
 
@@ -476,6 +479,277 @@ For Nginx-terminated XHTTP, the Xray inbound should listen on localhost with tra
 ```
 
 `trustedXForwardedFor` avoids Xray splitHTTP/XHTTP warnings when a local reverse proxy sets forwarded headers.
+
+### 5.1 Add 443 WS/XHTTP Profiles to an Existing Node
+
+Use this when the deployment already has working Reality/Hysteria2 direct profiles and the operator wants a HTTPS/CDN fallback without disturbing direct ports.
+
+Target shape:
+
+```text
+VLESS TLS WS:
+  public: ws.example.com:443 /ws-<random>
+  nginx -> 127.0.0.1:<local-ws-port>
+  xray: listen 127.0.0.1, security none, network ws
+
+VLESS XHTTP TLS:
+  public: xhttp.example.com:443 /xh-<random>
+  nginx -> 127.0.0.1:<local-xhttp-port>
+  xray: listen 127.0.0.1, security none, network xhttp
+```
+
+Rules:
+
+- Nginx owns public `443/tcp`.
+- Xray listens on localhost-only ports, for example `10003` for WS and `10004` for XHTTP.
+- The subscription advertises the public `host:443` through `streamSettings.externalProxy`.
+- Use separate random paths: `/ws-<random>` and `/xh-<random>`.
+- Reality/Vision/Hysteria2 links must not use Cloudflare orange-cloud hosts. XHTTP/WS may use orange-cloud hosts.
+- Before touching SQLite or Nginx, back up both:
+
+```bash
+TS=$(date +%Y%m%d%H%M%S)
+cp /etc/x-ui/x-ui.db "/etc/x-ui/x-ui.db.bak.before-443-profiles-$TS"
+cp /etc/nginx/conf.d/cyclelink.conf "/etc/nginx/conf.d/cyclelink.conf.bak.before-443-profiles-$TS"
+```
+
+#### 5.1.1 VLESS TLS WS 443
+
+Create a VLESS inbound with:
+
+```json
+{
+  "remark": "node1-vless-tls-ws",
+  "listen": "127.0.0.1",
+  "port": 10003,
+  "protocol": "vless",
+  "settings": {
+    "clients": "<copy enabled clients from the clients table>",
+    "decryption": "none",
+    "encryption": "none",
+    "fallbacks": []
+  },
+  "streamSettings": {
+    "network": "ws",
+    "security": "none",
+    "wsSettings": {
+      "path": "/ws-<random>",
+      "host": "ws.example.com"
+    },
+    "externalProxy": [{
+      "forceTls": "tls",
+      "dest": "ws.example.com",
+      "port": 443,
+      "remark": "",
+      "sni": "ws.example.com",
+      "fingerprint": "chrome"
+    }]
+  }
+}
+```
+
+Prefer `wsSettings.host` instead of `wsSettings.headers.Host`; recent Xray builds warn that Host in headers is deprecated.
+
+Add the Nginx path inside the node HTTPS server block:
+
+```nginx
+location ^~ /ws-<random> {
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection $connection_upgrade;
+    proxy_read_timeout 3600s;
+    proxy_send_timeout 3600s;
+    proxy_buffering off;
+    proxy_request_buffering off;
+    proxy_pass http://127.0.0.1:10003;
+}
+```
+
+Expected Clash/Mihomo proxy shape after refresh:
+
+```yaml
+- name: node1-vless-tls-ws
+  type: vless
+  server: ws.example.com
+  port: 443
+  tls: true
+  network: ws
+  ws-opts:
+    path: /ws-<random>
+    headers:
+      Host: ws.example.com
+```
+
+#### 5.1.2 VLESS XHTTP TLS 443
+
+Create a VLESS inbound with:
+
+```json
+{
+  "remark": "node1-vless-xhttp-tls",
+  "listen": "127.0.0.1",
+  "port": 10004,
+  "protocol": "vless",
+  "settings": {
+    "clients": "<copy enabled clients from the clients table>",
+    "decryption": "none",
+    "encryption": "none",
+    "fallbacks": []
+  },
+  "streamSettings": {
+    "network": "xhttp",
+    "security": "none",
+    "xhttpSettings": {
+      "path": "/xh-<random>",
+      "host": "xhttp.example.com",
+      "mode": "auto",
+      "xPaddingBytes": "100-1000",
+      "scMaxBufferedPosts": 30,
+      "scStreamUpServerSecs": "20-80"
+    },
+    "sockopt": {
+      "tcpcongestion": "bbr",
+      "trustedXForwardedFor": ["127.0.0.1", "::1"],
+      "acceptProxyProtocol": false
+    },
+    "externalProxy": [{
+      "forceTls": "tls",
+      "dest": "xhttp.example.com",
+      "port": 443,
+      "remark": "",
+      "sni": "xhttp.example.com",
+      "fingerprint": "chrome"
+    }]
+  }
+}
+```
+
+Add the Nginx path inside the node HTTPS server block:
+
+```nginx
+location ^~ /xh-<random> {
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection $connection_upgrade;
+    proxy_read_timeout 3600s;
+    proxy_send_timeout 3600s;
+    proxy_buffering off;
+    proxy_request_buffering off;
+    proxy_pass http://127.0.0.1:10004;
+}
+```
+
+Expected Clash/Mihomo proxy shape after refresh:
+
+```yaml
+- name: node1-vless-xhttp-tls
+  type: vless
+  server: xhttp.example.com
+  port: 443
+  tls: true
+  network: xhttp
+  xhttp-opts:
+    host: xhttp.example.com
+    mode: auto
+    path: /xh-<random>
+```
+
+#### 5.1.3 SQLite Consistency Requirements
+
+When repairing or creating these inbounds directly in SQLite, update both layers:
+
+```text
+inbounds.settings.clients
+clients table
+client_inbounds table
+```
+
+The `settings.clients` JSON is still used by parts of 3X-UI subscription generation. If only `client_inbounds` is updated, the panel may show a relationship but the generated subscription can miss or mis-render the profile.
+
+For each enabled client:
+
+```text
+client.email      -> settings.clients[].email
+client.uuid       -> settings.clients[].id
+client.sub_id     -> settings.clients[].subId
+client.total_gb   -> settings.clients[].totalGB
+client.expiry_time -> settings.clients[].expiryTime
+client.enable     -> settings.clients[].enable
+```
+
+Then attach the client to the new inbound:
+
+```sql
+insert or ignore into client_inbounds (client_id, inbound_id, flow_override, created_at)
+values (<client_id>, <new_inbound_id>, '', <now_ms>);
+```
+
+#### 5.1.4 Restart and Verify
+
+After DB and Nginx edits:
+
+```bash
+nginx -t
+systemctl reload nginx
+systemctl restart x-ui
+sleep 2
+systemctl is-active nginx
+systemctl is-active x-ui
+ss -tlnp | grep -E ':(10003|10004|443) '
+```
+
+Fetch the actual user-facing profile:
+
+```bash
+curl -fsS "https://sub.example.com/clash/<subId>" -o /tmp/linkray.yaml
+mihomo -t -f /tmp/linkray.yaml
+```
+
+Run a real delay probe through Mihomo's controller:
+
+```bash
+python3 - <<'PY'
+import yaml
+p = yaml.safe_load(open('/tmp/linkray.yaml'))
+p['mixed-port'] = 19203
+p['external-controller'] = '127.0.0.1:19205'
+p['secret'] = ''
+open('/tmp/linkray-run.yaml', 'w').write(yaml.safe_dump(p, allow_unicode=True, sort_keys=False))
+PY
+
+rm -rf /tmp/mihomo-linkray
+mkdir -p /tmp/mihomo-linkray
+mihomo -d /tmp/mihomo-linkray -f /tmp/linkray-run.yaml >/tmp/linkray-run.log 2>&1 &
+echo $! >/tmp/mihomo-linkray.pid
+sleep 3
+
+python3 - <<'PY'
+import urllib.parse, urllib.request
+for name in ['node1-vless-tls-ws', 'node1-vless-xhttp-tls']:
+    url = 'http://127.0.0.1:19205/proxies/' + urllib.parse.quote(name, safe='') + '/delay?timeout=10000&url=http://www.gstatic.com/generate_204'
+    try:
+        with urllib.request.urlopen(url, timeout=12) as r:
+            print(name, r.read().decode())
+    except Exception as exc:
+        print(name, 'ERROR', repr(exc))
+PY
+
+kill "$(cat /tmp/mihomo-linkray.pid)" >/dev/null 2>&1 || true
+```
+
+Also verify the generic subscription includes the same links for clients such as Shadowrocket:
+
+```bash
+curl -fsS "https://sub.example.com/sub/<subId>" | base64 -d | grep -E 'type=(ws|xhttp)|vless-tls-ws|vless-xhttp-tls'
+```
 
 For VLESS/Trojan Reality, create TCP direct inbounds on DNS-only hostnames:
 
@@ -1199,7 +1473,7 @@ Before handing over the subscription:
 ```bash
 # On every VPS
 systemctl is-active x-ui
-ss -tlnp | grep -E ':(443|10882|<panel-port>|9444|9445) '
+ss -tlnp | grep -E ':(443|10882|<panel-port>|9444|9445|9446|10003|10004) '
 ss -lunp | grep -E ':(8444) ' || true
 
 # Cluster mode only: from VPS-A to each remote node
@@ -1215,7 +1489,7 @@ curl -I https://sub.example.com/json/<subId>
 curl -fsS https://sub.example.com/sub/<subId> | base64 -d
 
 # Confirm expected schemes/security combinations.
-curl -fsS https://sub.example.com/sub/<subId> | base64 -d | grep -E 'security=reality|hysteria2://'
+curl -fsS https://sub.example.com/sub/<subId> | base64 -d | grep -E 'security=reality|hysteria2://|type=ws|type=xhttp'
 
 # Confirm TLS and source routing without local proxy or fake-IP DNS.
 curl --noproxy '*' --resolve panel.example.com:443:<VPS-A-IP> \
@@ -1231,9 +1505,11 @@ fail2ban-client status sshd
 crontab -l | grep acme.sh
 ```
 
-Then import the Clash/Mihomo subscription in a client and verify it contains every expected node/protocol remark exactly once.
+Then import the Clash/Mihomo subscription in a client and verify it contains every expected node/protocol remark exactly once. For each new 443 WS/XHTTP profile, use Mihomo's controller delay API against the exact proxy name; a syntactically valid profile is not enough.
 
 Expected count example for two nodes with XHTTP, Trojan TLS, SS2022, VLESS Reality, Trojan Reality, and Hysteria2: 12 generic links total, including four Reality links and two Hysteria2 links.
+
+Expected single-node mixed-mode example after adding WS and XHTTP fallbacks: VLESS Reality, VLESS Reality Vision, Trojan Reality, Hysteria2, VLESS TLS WS, and VLESS XHTTP TLS.
 
 ## 8. Output Format
 

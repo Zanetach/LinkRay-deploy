@@ -26,7 +26,7 @@ This is a subscription-centered workflow, not the quick single-node `x-ui-deploy
    - Mode: single-point or cluster.
    - Node VPS list for cluster mode: IP, SSH user/port/auth, node domain, management API endpoint.
    - Root domain and DNS provider credentials.
-   - Protocols to expose: for Cloudflare path, start with `vless-xhttp-tls`; for direct anti-block mode, use `vless-reality`, `trojan-reality`, and `hysteria2`, and remove XHTTP/Cloudflare, Trojan TLS, and Shadowsocks from the user-facing subscription unless explicitly requested.
+   - Protocols to expose: for Cloudflare/CDN path, use `vless-xhttp-tls` on `443/tcp`; for compatibility fallback, use `vless-tls-ws` on a different `443/tcp` path; for direct anti-block mode, use `vless-reality`, `vless-reality-vision`, `trojan-reality`, and `hysteria2`.
    - Users: email/remark, quota, expiry, IP limit, and `subId` policy.
    - Security choice for node API reachability in cluster mode: WireGuard/Tailscale/private network preferred; otherwise firewall allow only the main panel IP.
 
@@ -41,6 +41,7 @@ This is a subscription-centered workflow, not the quick single-node `x-ui-deploy
    - In cluster mode, register remote nodes in the main panel and verify heartbeat.
    - Create inbounds per node and protocol.
    - Create clients once on the main panel and attach the same client identity/subId to every intended inbound.
+   - For Nginx-terminated WS/XHTTP on 443, create localhost-only Xray inbounds and advertise the public TLS host through `externalProxy`.
    - Configure UFW and Fail2Ban after SSH access and API reachability are verified.
    - If native 3X-UI subscriptions import but need richer Clash/Mihomo strategy groups and rules, deploy a localhost native profile wrapper in front of `/clash/<subId>`.
    - Deploy Sub-Store only when format conversion, external subscriptions, or multi-source subscription processing is required.
@@ -90,6 +91,11 @@ Recommended single-point layout:
 - In cluster mode, run Sub-Store only on the main panel VPS. Do not install it on every remote node.
 - In direct anti-block mode, keep node traffic on DNS-only hostnames such as `ca.example.com` and `la.example.com`; do not use Cloudflare orange-cloud hostnames or CF preferred IPs for Reality/Vision/Hysteria2 nodes.
 - In direct anti-block mode, the adapted subscription should only expose `vless-reality`, `trojan-reality`, and `hysteria2` direct nodes by default. Disable or filter out `vless-xhttp`, Trojan TLS, and Shadowsocks entries if the goal is a clean direct-only client profile.
+- For mixed mode, keep direct and CDN profiles separate: Reality/Vision/Hysteria2 use VPS IPs or DNS-only hostnames, while XHTTP/WS can use Cloudflare orange-cloud hostnames on `443/tcp`.
+- For `vless-tls-ws` and `vless-xhttp-tls`, do not let Xray bind public `443/tcp`. Nginx terminates TLS on 443 and forwards random paths to localhost-only Xray ports such as `127.0.0.1:10003` for WS and `127.0.0.1:10004` for XHTTP.
+- For Nginx-terminated WS/XHTTP, set Xray `streamSettings.security=none` and use `externalProxy.forceTls=tls` so subscriptions show the public `host:443` endpoint while Xray receives local plaintext HTTP transport.
+- Use distinct random paths for each 443 transport, for example `/ws-<random>` and `/xh-<random>`. Never reuse the same Nginx path across protocols.
+- Treat TUIC v5 as outside the native Xray/3X-UI inbound set. If requested, explain that it requires a separate `sing-box` or `tuic-server` sidecar plus subscription injection; do not pretend 3X-UI can create a native TUIC inbound.
 - If the client uses fake-ip DNS and proxy server domains resolve to `198.18.0.0/15`, rewrite direct node `server` values to the VPS IPs while preserving Reality `sni`/`servername` and Hysteria2 `sni`. Otherwise the client may dial the fake IP and show `Timeout`.
 - If Reality nodes still show intermittent `Timeout` after DNS/IP rewrite and the TCP ports are reachable, test the Reality `target`/`serverNames` before changing unrelated parts. Prefer a stable non-Apple, non-Cloudflare TLS 1.3 target such as `www.yahoo.com:443`/`www.yahoo.com`; avoid assuming `www.cloudflare.com`, `www.microsoft.com`, or Apple/iCloud targets will be stable from every VPS/client path. Re-fetch the Clash profile and run multiple Mihomo delay rounds after changing the target.
 - Treat Reality as a transport security option, not a universal wrapper. Use it with TCP VLESS/Trojan inbounds. If the operator wants full protocol coverage, a single subscription can include both Trojan TLS and Trojan Reality as separate profiles. Do not force Reality onto Hysteria2 or Shadowsocks.
@@ -142,6 +148,10 @@ Do not present panel-exported internal links as the primary deliverable. The clu
 | Mixing direct anti-block and CF preferred-IP nodes in one clean mode | Use separate modes; for direct anti-block, expose only Reality/Hysteria2 direct nodes |
 | Reality works sometimes but still times out during client delay tests | Verify the advertised server is the VPS IP, then change Reality `target/serverNames` to a stable non-Apple TLS site such as `www.yahoo.com`; if only one VLESS port is flaky, move that inbound to another allowed direct TCP port such as `8443` |
 | Saying "all protocols use Reality" | Add Reality profiles where supported, but keep separate usable profiles such as Trojan TLS when full protocol coverage is requested |
+| Adding TUIC v5 as a 3X-UI/Xray inbound | TUIC is not native here; use a sidecar only when explicitly requested |
+| Binding Xray directly to 443 for WS/XHTTP when Nginx already owns 443 | Keep Xray on localhost and forward Nginx random paths to it |
+| Reusing one 443 path for WS and XHTTP | Use separate random paths such as `/ws-...` and `/xh-...` |
+| Pointing Reality/Hysteria2 at Cloudflare orange-cloud names | Use orange-cloud only for HTTP transports such as XHTTP/WS |
 | Creating Hysteria2 as TCP+TLS | Set `streamSettings.network=hysteria` and verify UDP listening |
 | Adding too many protocols first | Start with VLESS/XHTTP/TLS; add Reality/Hysteria2/Trojan/SS after the base subscription works |
 | Renaming 3X-UI internals to a brand | Only rewrite page text at Nginx/Caddy; do not rename services, DBs, API paths, or tags |
