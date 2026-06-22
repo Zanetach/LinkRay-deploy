@@ -790,6 +790,10 @@ If one node's VLESS Reality port is reachable but intermittently fails Mihomo de
 
 Do not treat every TLS-looking site as an equally good Reality target. If clients show `Timeout` even though DNS is correct and `nc -vz <node-ip> <port>` succeeds, change only `realitySettings.target` and `realitySettings.serverNames` first, then retest. In practice, `www.yahoo.com:443`/`www.yahoo.com` is a safer default than `www.cloudflare.com:443`, `www.microsoft.com:443`, or Apple/iCloud targets for this deployment shape. Xray may explicitly warn against Apple/iCloud Reality targets, and those should not be the default even if they pass a short smoke test.
 
+If Mihomo or a GUI client still reports Reality timeout, test the same inbound with Xray itself before changing the deployment. A temporary Xray client running on another VPS should connect to the node's public IP and request `https://www.gstatic.com/generate_204` through a local SOCKS inbound. If this returns HTTP 204, the server-side Reality key pair, short ID, SNI, and user credential are valid; continue debugging the client, delay probe, or local route instead of rewriting the server.
+
+Also check for duplicate client identity before blaming the protocol. In 3X-UI 3.x cluster mode, remote nodes can retain stale clients even after the main panel changed names. Two clients that only differ by case, such as `alice` and `Alice`, or two rows with the same UUID/password/auth/subId, can make Xray fail with `User alice already exists`. `systemctl is-active x-ui` may still return active because the web panel is running, so always confirm Xray ports with `ss -tulnp` and inspect `/usr/local/x-ui/bin/config.json`.
+
 For Hysteria2, keep the protocol as `hysteria` and set version `2` in settings. The transport must be `network: "hysteria"`:
 
 ```json
@@ -1552,7 +1556,7 @@ crontab -l | grep acme.sh
 
 Then import the Clash/Mihomo subscription in a client and verify it contains every expected node/protocol remark exactly once. For each new 443 WS/XHTTP profile, use Mihomo's controller delay API against the exact proxy name; a syntactically valid profile is not enough.
 
-Expected count example for two nodes with XHTTP, Trojan TLS, SS2022, VLESS Reality, Trojan Reality, and Hysteria2: 12 generic links total, including four Reality links and two Hysteria2 links.
+Expected count example for two matching nodes with VLESS Reality, VLESS Reality Vision, Trojan Reality, Hysteria2, VLESS TLS WS, and VLESS XHTTP TLS: 12 profiles total. The node2 XHTTP profile should use its own orange-cloud hostname such as `xhttp2.example.com`, while Reality and Hysteria2 should use the node2 VPS IP or DNS-only direct hostname.
 
 Expected single-node mixed-mode example after adding WS and XHTTP fallbacks: VLESS Reality, VLESS Reality Vision, Trojan Reality, Hysteria2, VLESS TLS WS, and VLESS XHTTP TLS.
 

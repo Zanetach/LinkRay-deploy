@@ -37,6 +37,8 @@ xhttp.example.com:443 /xh-<random>
 
 Use Cloudflare orange-cloud only for HTTP-compatible transports such as XHTTP or WS. Do not point Reality or Hysteria2 at orange-cloud hostnames.
 
+When a remote node IP changes, update every layer that can publish or dial that node: Cloudflare A records, the main 3X-UI node address, the remote node's own inbound share addresses, firewall rules, Nginx upstream paths for WS/XHTTP, and any Clash/Mihomo wrapper that rewrites direct node hostnames to VPS IPs.
+
 ## Protocol Boundary
 
 | Protocol profile | Xray native | Good public endpoint | Notes |
@@ -83,3 +85,7 @@ mihomo -t -f /tmp/linkray.yaml
 ```
 
 For live protocol testing, run Mihomo's delay API against each new proxy name, not just the first green button in a GUI client.
+
+If `mihomo` reports `Timeout` for Reality but the TCP port is reachable, verify the server independently with an Xray client before changing protocol settings. A successful Xray client request proves the server-side Reality inbound, key pair, short ID, and client credential are valid; the remaining issue is client compatibility, local path quality, or the delay probe.
+
+3X-UI client names must also be unique after case folding on each inbound. A pair such as `alice` and `Alice`, or a stale remote-node client with the same UUID/subId as an active user, can make Xray fail with `User alice already exists` and leave all node protocols in timeout even though `x-ui` itself is active.
