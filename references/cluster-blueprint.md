@@ -905,6 +905,7 @@ The wrapper must:
 - read the native 3X-UI `/clash/<subId>` YAML as its source
 - preserve the native `proxies:` entries
 - replace the native minimal `proxy-groups` and `rules` with the v2ray-agent-style groups and MetaCubeX `mrs` rule-providers documented below
+- keep site-specific `DIRECT` overrides for provider, admin, and payment dashboards before broad overseas routing such as `geolocation-!cn`
 - optionally rewrite direct node `server` values from DNS names to VPS IPs when clients use fake-ip DNS, while preserving Reality `sni`/`servername` and Hysteria2 `sni`
 - forward `subscription-userinfo`, `profile-title`, `profile-update-interval`, and `profile-web-page-url`
 - stay bound to `127.0.0.1`
@@ -1301,6 +1302,7 @@ rule-providers:
 rules:
   - RULE-SET,private,DIRECT
   - RULE-SET,category-ads-all,REJECT
+  - DOMAIN-SUFFIX,dmit.io,DIRECT
   - RULE-SET,telegram,Telegram,no-resolve
   - RULE-SET,openai,OpenAI
   - RULE-SET,github,GitHub

@@ -12,6 +12,7 @@ This skill is subscription-centered: 3X-UI remains the user, quota, traffic, and
 - VLESS TLS WS on `443/tcp` through Nginx
 - VLESS XHTTP TLS on `443/tcp` through Nginx and optional Cloudflare orange-cloud
 - Clash/Mihomo profile wrapper with strategy groups and `meta-rules-dat`
+- Site-specific `DIRECT` overrides for provider, admin, and payment dashboards
 - BBR, Fail2Ban, certificate renewal, and verification checks
 
 ## Recommended Current Shape
