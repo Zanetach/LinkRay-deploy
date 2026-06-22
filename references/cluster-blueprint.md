@@ -942,7 +942,7 @@ curl -fsSI 'https://sub.example.com/clash/<subId>' |
 
 curl -fsS 'https://sub.example.com/clash/<subId>' -o /tmp/linkray-clash.yaml
 grep -nE '^(mixed-port|proxies|proxy-groups|rule-providers|rules):' /tmp/linkray-clash.yaml
-grep -nE '^[[:space:]]*- name: (自动选择|故障转移|负载均衡|节点选择|流媒体|手动切换|全球代理|DNS_Proxy|Telegram|Google|YouTube|Netflix|Spotify|HBO|Bing|OpenAI|ClaudeAI|Disney|GitHub|国内媒体|本地直连|漏网之鱼)$' /tmp/linkray-clash.yaml
+grep -nE '^[[:space:]]*- name: (自动选择|故障转移|负载均衡|节点选择|流媒体|手动切换|全球代理|DNS_Proxy|Telegram|Google|YouTube|Netflix|Spotify|HBO|Bing|Microsoft|OpenAI|ClaudeAI|Disney|GitHub|国内媒体|本地直连|漏网之鱼)$' /tmp/linkray-clash.yaml
 python3 - <<'PY'
 import yaml
 with open('/tmp/linkray-clash.yaml') as f:
@@ -1130,6 +1130,7 @@ Netflix
 Spotify
 HBO
 Bing
+Microsoft
 OpenAI
 ClaudeAI
 Disney
@@ -1282,6 +1283,13 @@ rule-providers:
     interval: 86400
     path: ./ruleset/geosite-bing.mrs
     url: "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geosite/bing.mrs"
+  microsoft:
+    type: http
+    behavior: domain
+    format: mrs
+    interval: 86400
+    path: ./ruleset/geosite-microsoft.mrs
+    url: "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geosite/microsoft.mrs"
   disney:
     type: http
     behavior: domain
@@ -1359,6 +1367,7 @@ rules:
   - RULE-SET,spotify,Spotify
   - RULE-SET,hbo,HBO
   - RULE-SET,bing,Bing
+  - RULE-SET,microsoft,Microsoft
   - RULE-SET,disney,Disney
   - RULE-SET,anthropic,ClaudeAI
   - RULE-SET,media-cn,国内媒体
@@ -1433,7 +1442,7 @@ with open('/tmp/linkray-store.yaml') as f:
 for proxy in data.get('proxies', []):
     print(proxy.get('name'), proxy.get('type'), proxy.get('server'), proxy.get('network'), bool(proxy.get('reality-opts')))
 PY
-grep -nE '^[[:space:]]*- name: (自动选择|故障转移|负载均衡|节点选择|流媒体|手动切换|全球代理|DNS_Proxy|Telegram|Google|YouTube|Netflix|Spotify|HBO|Bing|OpenAI|ClaudeAI|Disney|GitHub|国内媒体|本地直连|漏网之鱼)$' /tmp/linkray-store.yaml
+grep -nE '^[[:space:]]*- name: (自动选择|故障转移|负载均衡|节点选择|流媒体|手动切换|全球代理|DNS_Proxy|Telegram|Google|YouTube|Netflix|Spotify|HBO|Bing|Microsoft|OpenAI|ClaudeAI|Disney|GitHub|国内媒体|本地直连|漏网之鱼)$' /tmp/linkray-store.yaml
 grep -nE '^(rule-providers|rules):|RULE-SET' /tmp/linkray-store.yaml
 grep -c '^[[:space:]]*name: ' /tmp/linkray-store.yaml
 mihomo -t -f /tmp/linkray-store.yaml
