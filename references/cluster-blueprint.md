@@ -905,6 +905,7 @@ The wrapper must:
 - read the native 3X-UI `/clash/<subId>` YAML as its source
 - preserve the native `proxies:` entries
 - replace the native minimal `proxy-groups` and `rules` with the v2ray-agent-style groups and MetaCubeX `mrs` rule-providers documented below
+- ensure every visible strategy group has an actual rule path; `DNS_Proxy`, `Telegram`, and `国内媒体` must not be UI-only groups
 - keep site-specific `DIRECT` overrides for provider, admin, payment, and Cloudflare challenge resources before broad overseas routing such as `geolocation-!cn`
 - optionally rewrite direct node `server` values from DNS names to VPS IPs when clients use fake-ip DNS, while preserving Reality `sni`/`servername` and Hysteria2 `sni`
 - forward `subscription-userinfo`, `profile-title`, `profile-update-interval`, and `profile-web-page-url`
@@ -1200,6 +1201,13 @@ rule-providers:
     interval: 86400
     path: ./ruleset/geosite-category-ads-all.mrs
     url: "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geosite/category-ads-all.mrs"
+  private-ip:
+    type: http
+    behavior: ipcidr
+    format: mrs
+    interval: 86400
+    path: ./ruleset/geoip-private.mrs
+    url: "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geoip/private.mrs"
   cn:
     type: http
     behavior: domain
@@ -1284,6 +1292,13 @@ rule-providers:
     interval: 86400
     path: ./ruleset/geosite-anthropic.mrs
     url: "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geosite/anthropic.mrs"
+  telegram-domain:
+    type: http
+    behavior: domain
+    format: mrs
+    interval: 86400
+    path: ./ruleset/geosite-telegram.mrs
+    url: "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geosite/telegram.mrs"
   telegram:
     type: http
     behavior: ipcidr
@@ -1291,6 +1306,13 @@ rule-providers:
     interval: 86400
     path: ./ruleset/geoip-telegram.mrs
     url: "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geoip/telegram.mrs"
+  media-cn:
+    type: http
+    behavior: domain
+    format: mrs
+    interval: 86400
+    path: ./ruleset/geosite-category-media-cn.mrs
+    url: "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geosite/category-media-cn.mrs"
   cn-ip:
     type: http
     behavior: ipcidr
@@ -1300,10 +1322,30 @@ rule-providers:
     url: "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geoip/cn.mrs"
 
 rules:
+  - IP-CIDR,127.0.0.0/8,DIRECT,no-resolve
+  - IP-CIDR,10.0.0.0/8,DIRECT,no-resolve
+  - IP-CIDR,172.16.0.0/12,DIRECT,no-resolve
+  - IP-CIDR,192.168.0.0/16,DIRECT,no-resolve
+  - IP-CIDR,169.254.0.0/16,DIRECT,no-resolve
+  - IP-CIDR,224.0.0.0/4,DIRECT,no-resolve
+  - IP-CIDR6,::1/128,DIRECT,no-resolve
+  - IP-CIDR6,fc00::/7,DIRECT,no-resolve
+  - IP-CIDR6,fe80::/10,DIRECT,no-resolve
   - RULE-SET,private,DIRECT
+  - RULE-SET,private-ip,DIRECT,no-resolve
   - RULE-SET,category-ads-all,REJECT
+  - DOMAIN,dns.google,DNS_Proxy
+  - DOMAIN,dns64.dns.google,DNS_Proxy
+  - DOMAIN,dns.cloudflare.com,DNS_Proxy
+  - DOMAIN,cloudflare-dns.com,DNS_Proxy
+  - DOMAIN,dns.quad9.net,DNS_Proxy
+  - DOMAIN,doh.opendns.com,DNS_Proxy
+  - DOMAIN,dns.alidns.com,DNS_Proxy
+  - DOMAIN,doh.pub,DNS_Proxy
   - DOMAIN-SUFFIX,dmit.io,DIRECT
+  - DOMAIN,challenges.cloudflare.com,DIRECT
   - DOMAIN-SUFFIX,cloudflare.com,DIRECT
+  - RULE-SET,telegram-domain,Telegram
   - RULE-SET,telegram,Telegram,no-resolve
   - RULE-SET,openai,OpenAI
   - RULE-SET,github,GitHub
@@ -1315,6 +1357,7 @@ rules:
   - RULE-SET,bing,Bing
   - RULE-SET,disney,Disney
   - RULE-SET,anthropic,ClaudeAI
+  - RULE-SET,media-cn,国内媒体
   - RULE-SET,geolocation-!cn,全球代理
   - RULE-SET,cn,本地直连
   - RULE-SET,cn-ip,本地直连,no-resolve
