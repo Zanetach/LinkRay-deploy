@@ -31,6 +31,7 @@ https://sub.example.com/clash/<subId>
 | WS/XHTTP 与 443 端口冲突 | Nginx 占用公网 443，Xray 只监听 localhost 随机路径 |
 | Reality/Hysteria2 被错误放到 Cloudflare 小云朵 | Reality/Hysteria2 使用 VPS IP 或 DNS-only 主机名 |
 | node2 换 IP 容易漏改 | 文档固定 DNS、节点地址、share_addr、防火墙、Nginx upstream、wrapper rewrite map 同步项 |
+| 住宅 IP 被误当成订阅节点 | 住宅出口只作为服务端 Xray 透明 outbound，不暴露 SOCKS 凭据 |
 
 ## Deployed Shape
 
@@ -43,6 +44,7 @@ https://sub.example.com/clash/<subId>
 | Subscription profile | Wrapper-backed Clash/Mihomo YAML |
 | Profile count | `12` profiles total |
 | Rules output | `23` strategy groups, `20` providers, `41` routing rules |
+| Residential routing | Server-side Xray outbound `residential`, not a Clash profile |
 
 ## 支持的协议
 
@@ -131,6 +133,37 @@ Routing contract:
 
 `expire=0` 表示该用户没有固定到期日期。需要客户端显示具体日期时，先在 3X-UI 用户配置里设置到期时间；wrapper 会自动反映到所有订阅用户。
 
+## Residential Outbound
+
+当前住宅 IP 不是单独的 Clash 订阅节点，也不在客户端暴露 SOCKS 上游地址。它是两台服务器 Xray 配置里的服务端透明 outbound：
+
+| 项目 | 当前设计 |
+|---|---|
+| Xray outbound tag | `residential` |
+| Xray outbound protocol | `socks` |
+| 用户订阅中是否显示 | 不显示 |
+| 是否计入 12 个 profiles | 不计入 |
+| Clash 是否需要住宅策略组 | 当前不需要 |
+
+服务端只把高风控 AI/Copilot 类域名转到 `residential` outbound：
+
+```text
+openai.com
+chatgpt.com
+oaistatic.com
+oaiusercontent.com
+anthropic.com
+claude.ai
+console.anthropic.com
+cursor.com
+githubcopilot.com
+copilot.microsoft.com
+```
+
+客户端仍然只选择普通 node1/node2 profile。命中上面域名后，Xray 在服务端二次路由到住宅出口。不要把住宅 SOCKS 账号、密码或上游地址写进 Clash/Mihomo 订阅。
+
+`dmit.io` 不走住宅出口，继续保留在客户端订阅规则里的 `DIRECT` 前置规则。
+
 ## Install Skill
 
 ```bash
@@ -161,6 +194,17 @@ grep -nE '^[[:space:]]*- name: (自动选择|故障转移|负载均衡|节点选
 
 For live checks, run Mihomo controller delay tests against every exact proxy name. A single GUI green check is not enough evidence.
 
+Residential outbound verification is server-side:
+
+```bash
+python3 - <<'PY'
+import json, pathlib
+data=json.loads(pathlib.Path('/usr/local/x-ui/bin/config.json').read_text())
+print([(o.get('tag'), o.get('protocol')) for o in data.get('outbounds', [])])
+print([r for r in data.get('routing', {}).get('rules', []) if r.get('outboundTag') == 'residential'])
+PY
+```
+
 ## Node2 IP Change Checklist
 
 When VPS-B changes IP, update these together:
@@ -181,6 +225,7 @@ Then re-fetch `/clash/<subId>`, run `mihomo -t`, and run delay checks for every 
 - Keep one subscription authority: VPS-A.
 - Do not disable subscriptions.
 - Do not expose VPS-B panel/API ports publicly.
+- Do not expose residential SOCKS upstream credentials in the public subscription.
 - Do not rename `x-ui` services, database paths, API paths, or node sync identifiers for branding.
 - Do not point Reality or Hysteria2 at Cloudflare orange-cloud hostnames.
 - Do not bind Xray directly to public `443/tcp` for WS/XHTTP when Nginx owns 443.

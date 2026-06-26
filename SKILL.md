@@ -39,6 +39,7 @@ Keep all answers and deployment steps inside the verified deployed set.
    - Create the verified profile set on both nodes: VLESS Reality, VLESS Reality Vision, Trojan Reality, Hysteria2, VLESS TLS WS 443, and VLESS XHTTP TLS 443.
    - Create clients once on VPS-A and attach the same client identity/subId to every selected inbound on node1 and node2.
    - For WS/XHTTP on 443, keep Xray localhost-only and advertise the public TLS host through `externalProxy`.
+   - Keep the verified `residential` Xray outbound as a server-side transparent route for AI/Copilot domains only.
    - Deploy the localhost Clash/Mihomo wrapper in front of `/clash/<subId>`.
    - Configure UFW and Fail2Ban after SSH and node API reachability are verified.
    - Verify certificate renewal, subscription decoding, node parity, wrapper-generated strategy groups/rules, and remote-node API access.
@@ -53,6 +54,7 @@ Clients
       -> localhost Clash/Mihomo wrapper
       -> native 3X-UI /clash/<subId> source
       -> node1 and node2 inbounds
+      -> optional server-side residential outbound for matched AI domains
 ```
 
 ## Hard Requirements
@@ -71,6 +73,8 @@ Clients
 - The wrapper must not rely on per-user data repairs. For every enabled user, calculate `upload`/`download` from `client_traffics`, `total` from `clients.total_gb`, and `expire` from `clients.expiry_time`; use the native header only as a fallback.
 - Treat `expire=0` as no fixed expiry date. A visible expiry date requires a nonzero expiry time configured on that user in 3X-UI.
 - The wrapper must expose the 23 visible strategy groups, 20 providers, and 41 routing rules from the blueprint.
+- Keep residential IP handling server-side only: Xray outbound tag `residential`, protocol `socks`, domain rules for OpenAI/ChatGPT/Anthropic/Claude/Cursor/Copilot, and no residential SOCKS credentials in user subscriptions.
+- Do not add a residential Clash strategy group unless a separate user-visible residential inbound is intentionally created and verified. The current verified subscription remains 12 profiles.
 - Do not leave visible strategy groups as dead UI.
 - Route DoH domains to `DNS_Proxy`, Telegram domain/IP rules to `Telegram`, `media-cn` to `国内媒体`, and the final fallback to `MATCH,漏网之鱼`.
 - Keep Reality and Hysteria2 on VPS IPs or DNS-only hostnames.
@@ -107,6 +111,8 @@ Do not present panel-exported internal links as the primary deliverable.
 | Returning only `proxies:` and the client shows no nodes | Return a full wrapper-backed profile with `proxy-groups`, `rule-providers`, and `rules` |
 | Returning rules but no visible strategy groups | Add the standard 23 strategy groups and map every `RULE-SET` |
 | Wrapper-backed profile shows no traffic quota or expiry | Compute `subscription-userinfo` globally by `subId` from the 3X-UI database; do not patch one user manually |
+| Exposing the residential SOCKS upstream in Clash subscriptions | Keep residential routing inside server-side Xray outbound rules |
+| Expecting DMIT to use the residential outbound | Keep `dmit.io` as `DIRECT`; the verified residential route is only for AI/Copilot domains |
 | Provider/admin/payment pages fail after importing the subscription | Keep front-loaded `DIRECT` overrides before `geolocation-!cn` |
 | Binding Xray directly to public 443 for WS/XHTTP | Keep Xray on localhost and forward Nginx paths |
 | Reusing one 443 path for WS and XHTTP | Use separate random paths |

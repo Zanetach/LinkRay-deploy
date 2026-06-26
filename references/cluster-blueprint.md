@@ -147,6 +147,99 @@ sqlite3 /etc/x-ui/x-ui.db \
   "select client_id,inbound_id from client_inbounds;"
 ```
 
+## Residential Outbound
+
+The verified residential IP setup is a server-side Xray outbound, not a user-visible Clash node.
+
+Current contract:
+
+```text
+outbound tag: residential
+protocol: socks
+scope: server-side transparent routing only
+subscription exposure: none
+profile count impact: none; the subscription remains 12 profiles
+```
+
+Do not publish the residential SOCKS upstream address, username, or password in Clash/Mihomo subscriptions. Users keep selecting normal node1/node2 profiles; Xray performs the residential hop only after a service-side routing rule matches.
+
+Required service-side domains:
+
+```text
+domain:openai.com
+domain:chatgpt.com
+domain:oaistatic.com
+domain:oaiusercontent.com
+domain:anthropic.com
+domain:claude.ai
+domain:console.anthropic.com
+domain:cursor.com
+domain:githubcopilot.com
+domain:copilot.microsoft.com
+```
+
+Do not route `dmit.io` through the residential outbound in this verified deployment. Keep `DOMAIN-SUFFIX,dmit.io,DIRECT` in the Clash/Mihomo wrapper rules.
+
+Minimal Xray shape:
+
+```json
+{
+  "outbounds": [
+    {
+      "tag": "residential",
+      "protocol": "socks",
+      "settings": {
+        "servers": [
+          {
+            "address": "<residential-socks-host>",
+            "port": 443,
+            "users": [
+              {
+                "user": "<username>",
+                "pass": "<password>"
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "routing": {
+    "rules": [
+      {
+        "type": "field",
+        "domain": [
+          "domain:openai.com",
+          "domain:chatgpt.com",
+          "domain:oaistatic.com",
+          "domain:oaiusercontent.com",
+          "domain:anthropic.com",
+          "domain:claude.ai",
+          "domain:console.anthropic.com",
+          "domain:cursor.com",
+          "domain:githubcopilot.com",
+          "domain:copilot.microsoft.com"
+        ],
+        "outboundTag": "residential"
+      }
+    ]
+  }
+}
+```
+
+Verification:
+
+```bash
+python3 - <<'PY'
+import json, pathlib
+data=json.loads(pathlib.Path('/usr/local/x-ui/bin/config.json').read_text())
+print([(o.get('tag'), o.get('protocol')) for o in data.get('outbounds', [])])
+print([r for r in data.get('routing', {}).get('rules', []) if r.get('outboundTag') == 'residential'])
+PY
+```
+
+The output must include `('residential', 'socks')` and the AI/Copilot domain rule above.
+
 ## Clash/Mihomo Wrapper
 
 Shape:
