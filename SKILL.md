@@ -67,7 +67,9 @@ Clients
 - Keep subscription service behind Nginx and set `subDomain`.
 - Keep `subPath=/sub/` and `subClashPath=/clash/`; do not set `subPath=/clash/`.
 - Publish `https://sub.example.com/clash/<subId>` through the native wrapper.
-- The wrapper must read native 3X-UI `/clash/<subId>`, preserve `proxies:`, replace minimal groups/rules with the standard full profile, and forward `subscription-userinfo`.
+- The wrapper must read native 3X-UI `/clash/<subId>`, preserve `proxies:`, replace minimal groups/rules with the standard full profile, and compute `subscription-userinfo` globally by `subId` from the 3X-UI database.
+- The wrapper must not rely on per-user data repairs. For every enabled user, calculate `upload`/`download` from `client_traffics`, `total` from `clients.total_gb`, and `expire` from `clients.expiry_time`; use the native header only as a fallback.
+- Treat `expire=0` as no fixed expiry date. A visible expiry date requires a nonzero expiry time configured on that user in 3X-UI.
 - The wrapper must expose the 23 visible strategy groups, 20 providers, and 41 routing rules from the blueprint.
 - Do not leave visible strategy groups as dead UI.
 - Route DoH domains to `DNS_Proxy`, Telegram domain/IP rules to `Telegram`, `media-cn` to `国内媒体`, and the final fallback to `MATCH,漏网之鱼`.
@@ -104,7 +106,7 @@ Do not present panel-exported internal links as the primary deliverable.
 | Making users manually edit `/sub/` to `/clash/` | Configure displayed `subURI` to `/clash/` while leaving `subPath=/sub/` |
 | Returning only `proxies:` and the client shows no nodes | Return a full wrapper-backed profile with `proxy-groups`, `rule-providers`, and `rules` |
 | Returning rules but no visible strategy groups | Add the standard 23 strategy groups and map every `RULE-SET` |
-| Wrapper-backed profile shows no traffic quota or expiry | Forward `subscription-userinfo` from native 3X-UI |
+| Wrapper-backed profile shows no traffic quota or expiry | Compute `subscription-userinfo` globally by `subId` from the 3X-UI database; do not patch one user manually |
 | Provider/admin/payment pages fail after importing the subscription | Keep front-loaded `DIRECT` overrides before `geolocation-!cn` |
 | Binding Xray directly to public 443 for WS/XHTTP | Keep Xray on localhost and forward Nginx paths |
 | Reusing one 443 path for WS and XHTTP | Use separate random paths |

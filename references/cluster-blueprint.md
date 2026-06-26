@@ -164,9 +164,13 @@ The wrapper must:
 - read the native 3X-UI `/clash/<subId>` YAML as source
 - preserve native `proxies:`
 - replace minimal native `proxy-groups` and `rules`
-- forward `subscription-userinfo`, `profile-title`, `profile-update-interval`, and `profile-web-page-url`
+- compute `subscription-userinfo` globally by `subId` from the 3X-UI database, using native `subscription-userinfo` only as fallback
+- calculate `upload`/`download` from `client_traffics`, `total` from `clients.total_gb`, and `expire` from `clients.expiry_time` for every enabled user
+- forward `profile-title`, `profile-update-interval`, and `profile-web-page-url`
 - stay bound to `127.0.0.1`
 - rewrite direct node `server` values from DNS names to VPS IPs when clients use fake-IP DNS, while preserving Reality `sni`/`servername` and Hysteria2 `sni`
+
+Do not repair this by inserting rows for one user only. The wrapper must work for every future user created in 3X-UI. `expire=0` means no fixed expiry date; set a user expiry time in 3X-UI when clients must display a concrete date.
 
 Nginx route:
 

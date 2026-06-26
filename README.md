@@ -89,7 +89,7 @@ Expected subscription total: `12` profiles.
 
 ## Clash/Mihomo Rules
 
-VPS-A 上的本地 wrapper 会读取 3X-UI 原生 `/clash/<subId>` 输出，保留原生 `proxies:` 和订阅流量头，再替换为完整 Clash/Mihomo profile。
+VPS-A 上的本地 wrapper 会读取 3X-UI 原生 `/clash/<subId>` 输出，保留原生 `proxies:`，再替换为完整 Clash/Mihomo profile。订阅流量和到期信息不是单用户补丁：wrapper 会按请求中的 `subId` 查询 3X-UI 数据库，为任意已启用用户动态生成 `subscription-userinfo`。
 
 Wrapper 输出内容：
 
@@ -98,7 +98,7 @@ Wrapper 输出内容：
 | 可见策略组 | `23` 个 |
 | `meta-rules-dat` providers | `20` 个 |
 | 路由规则 | `41` 条 |
-| 流量/到期信息 | 保留 `subscription-userinfo` |
+| 流量/到期信息 | 按 `subId` 全局计算 `subscription-userinfo`，原生 header 仅兜底 |
 | 最后一条规则 | `MATCH,漏网之鱼` |
 
 Visible strategy groups:
@@ -120,6 +120,16 @@ Routing contract:
 | China domains and IPs | `本地直连` |
 | Overseas geolocation | `全球代理` |
 | Final fallback | `MATCH,漏网之鱼` |
+
+`subscription-userinfo` 的来源：
+
+| 字段 | 来源 |
+|---|---|
+| `upload` / `download` | `client_traffics.up` / `client_traffics.down` 汇总 |
+| `total` | `clients.total_gb` |
+| `expire` | `clients.expiry_time` |
+
+`expire=0` 表示该用户没有固定到期日期。需要客户端显示具体日期时，先在 3X-UI 用户配置里设置到期时间；wrapper 会自动反映到所有订阅用户。
 
 ## Install Skill
 
