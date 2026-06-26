@@ -52,12 +52,20 @@ https://sub.example.com/clash/<subId>
 
 | 交互问题 | 默认值 | 需要提供 |
 |---|---|---|
-| 是否启用服务端住宅出口？ | 不启用 | SOCKS host、port、username、password |
+| 是否启用服务端住宅出口？ | 不启用 | 一个 SOCKS endpoint URI |
 | 住宅出口用于哪些域名？ | AI/Copilot 域名 | 只在需要扩展时调整 |
 | 是否把住宅出口显示成 Clash 节点？ | 不显示 | 需要另建可见入站并单独验证 |
 | `dmit.io` 是否走住宅出口？ | 不走 | 保持 `DIRECT` |
 
 住宅出口是可选增强能力：启用后由 Xray 服务端透明分流，客户端订阅仍然只看到普通 node1/node2 profiles。
+
+可接受的输入格式：
+
+```text
+socks5://username:password@host:port
+socks5://host:port
+host:port
+```
 
 ## 支持的协议
 
@@ -160,6 +168,21 @@ Routing contract:
 
 部署交互点：在安装 3X-UI 和写入 Xray 模板前，先问是否启用该能力。只有在用户提供住宅 SOCKS 上游时才写入 `residential` outbound；没有提供时，不要生成空的 residential 配置。
 
+启用流程是在每台 VPS 上写入 3X-UI 的 `settings.xrayTemplateConfig`，不是只改临时生成的 Xray config。先把 `scripts/configure_residential_outbound.py` 复制到 VPS，或在 VPS 上的 repo checkout 目录中运行。标准流程：
+
+```bash
+read -r -s RESIDENTIAL_SOCKS_URL
+curl -fsS --connect-timeout 8 --max-time 15 \
+  --proxy "$RESIDENTIAL_SOCKS_URL" https://api.ipify.org
+
+python3 scripts/configure_residential_outbound.py \
+  --socks "$RESIDENTIAL_SOCKS_URL" \
+  --restart
+unset RESIDENTIAL_SOCKS_URL
+```
+
+这个脚本会备份 `/etc/x-ui/x-ui.db`，写入 `residential` SOCKS outbound 和 AI/Copilot 域名规则，然后重启 `x-ui`。需要在 VPS-A 和 VPS-B 都执行一次。
+
 服务端只把高风控 AI/Copilot 类域名转到 `residential` outbound：
 
 ```text
@@ -252,13 +275,16 @@ Then re-fetch `/clash/<subId>`, run `mihomo -t`, and run delay checks for every 
 |---|---|
 | [SKILL.md](SKILL.md) | Agent entrypoint and deployed workflow rules |
 | [references/cluster-blueprint.md](references/cluster-blueprint.md) | Command-level deployment and repair blueprint |
+| [scripts/configure_residential_outbound.py](scripts/configure_residential_outbound.py) | Writes the optional server-side residential Xray outbound into 3X-UI |
 | [agents/openai.yaml](agents/openai.yaml) | Display metadata for OpenAI/Codex-style agent surfaces |
 | [evals/evals.json](evals/evals.json) | Behavioral expectations for this deployed scope |
+| [tests/test_configure_residential_outbound.py](tests/test_configure_residential_outbound.py) | Regression tests for residential outbound configuration |
 
 ## Local Checks
 
 ```bash
 python3 ~/.codex/skills/readme-generator/scripts/check_readme_refs.py .
+python3 -m unittest tests.test_configure_residential_outbound
 git diff --check
 ```
 

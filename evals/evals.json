@@ -42,6 +42,12 @@
       "name": "deployment-prompts",
       "prompt": "我准备按这个 skill 从零部署，怎么知道它支持住宅 IP？",
       "expected_output": "The skill should surface residential IP as a deployment discovery prompt before SSH: ask whether to enable the server-side residential outbound, collect SOCKS upstream details only if enabled, keep it hidden from Clash/Mihomo subscriptions by default, and keep dmit.io DIRECT."
+    },
+    {
+      "id": 7,
+      "name": "residential-enable-deploy",
+      "prompt": "如果启用住宅 IP，我只输入 socket 地址，skill 应该怎么部署？",
+      "expected_output": "The skill should accept one SOCKS endpoint URI such as socks5://user:pass@host:port, preflight it with curl --proxy, run scripts/configure_residential_outbound.py on both VPS-A and VPS-B, back up /etc/x-ui/x-ui.db, update settings.xrayTemplateConfig, restart x-ui, verify the active residential outbound/rule, and avoid exposing credentials in subscriptions or logs."
     }
   ]
 }

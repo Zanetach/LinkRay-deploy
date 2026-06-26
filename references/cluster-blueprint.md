@@ -72,7 +72,7 @@ Before SSH or server changes, ask these questions and record the answers:
 
 ```text
 Enable server-side residential outbound for AI/Copilot domains? yes/no
-If yes: residential SOCKS host, port, username, password
+If yes: one residential SOCKS endpoint URI, for example socks5://user:pass@host:port
 Keep residential hidden from Clash/Mihomo subscriptions? yes/no
 Route dmit.io through residential? no
 ```
@@ -80,6 +80,7 @@ Route dmit.io through residential? no
 Defaults:
 
 - Residential outbound is optional and disabled unless upstream credentials are provided.
+- Accepted endpoint formats are `socks5://username:password@host:port`, `socks5://host:port`, or `host:port`.
 - Keep residential hidden from subscriptions in the verified design.
 - Keep `dmit.io` as `DIRECT`.
 - Do not create an empty `residential` outbound without a working upstream.
@@ -171,6 +172,8 @@ The verified residential IP setup is a server-side Xray outbound, not a user-vis
 
 This capability must be surfaced during deployment discovery. Do not wait until after the profile is built to ask about it.
 
+When enabled, take the SOCKS endpoint from deployment discovery and configure it on both VPS-A and VPS-B.
+
 Current contract:
 
 ```text
@@ -199,6 +202,21 @@ domain:copilot.microsoft.com
 ```
 
 Do not route `dmit.io` through the residential outbound in this verified deployment. Keep `DOMAIN-SUFFIX,dmit.io,DIRECT` in the Clash/Mihomo wrapper rules.
+
+Deployment flow on each VPS after copying `scripts/configure_residential_outbound.py` there, or from a repo checkout on that VPS:
+
+```bash
+read -r -s RESIDENTIAL_SOCKS_URL
+curl -fsS --connect-timeout 8 --max-time 15 \
+  --proxy "$RESIDENTIAL_SOCKS_URL" https://api.ipify.org
+
+python3 scripts/configure_residential_outbound.py \
+  --socks "$RESIDENTIAL_SOCKS_URL" \
+  --restart
+unset RESIDENTIAL_SOCKS_URL
+```
+
+The script must update `/etc/x-ui/x-ui.db` `settings.xrayTemplateConfig`, create a timestamped backup, restart `x-ui`, and avoid printing credentials. Do not only edit `/usr/local/x-ui/bin/config.json`; 3X-UI can regenerate that file from the database.
 
 Minimal Xray shape:
 
