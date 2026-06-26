@@ -218,6 +218,21 @@ unset RESIDENTIAL_SOCKS_URL
 
 The script must update `/etc/x-ui/x-ui.db` `settings.xrayTemplateConfig`, create a timestamped backup, restart `x-ui`, and avoid printing credentials. Do not only edit `/usr/local/x-ui/bin/config.json`; 3X-UI can regenerate that file from the database.
 
+Install automatic failover after residential deployment:
+
+```bash
+sudo scripts/install_residential_healthcheck_timer.sh "$(pwd)"
+systemctl list-timers --all linkray-residential-healthcheck.timer
+```
+
+Failover contract:
+
+- `residential_healthcheck.py --mode check` only checks and never mutates routing.
+- `residential_healthcheck.py --mode auto --restart` probes the residential SOCKS outbound.
+- If the probe fails, it changes the AI/Copilot domain rule from `residential` to `direct` and restarts `x-ui`.
+- If the probe succeeds, it changes the AI/Copilot domain rule back to `residential` and restarts `x-ui`.
+- The script updates `settings.xrayTemplateConfig`, backs up `/etc/x-ui/x-ui.db`, and never prints the SOCKS password.
+
 Minimal Xray shape:
 
 ```json
@@ -277,6 +292,14 @@ PY
 ```
 
 The output must include `('residential', 'socks')` and the AI/Copilot domain rule above.
+
+Healthcheck verification:
+
+```bash
+python3 scripts/residential_healthcheck.py --mode check
+python3 scripts/residential_healthcheck.py --mode auto --restart
+systemctl status linkray-residential-healthcheck.timer --no-pager
+```
 
 ## Clash/Mihomo Wrapper
 

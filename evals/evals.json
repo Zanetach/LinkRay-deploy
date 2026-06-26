@@ -48,6 +48,12 @@
       "name": "residential-enable-deploy",
       "prompt": "如果启用住宅 IP，我只输入 socket 地址，skill 应该怎么部署？",
       "expected_output": "The skill should accept one SOCKS endpoint URI such as socks5://user:pass@host:port, preflight it with curl --proxy, run scripts/configure_residential_outbound.py on both VPS-A and VPS-B, back up /etc/x-ui/x-ui.db, update settings.xrayTemplateConfig, restart x-ui, verify the active residential outbound/rule, and avoid exposing credentials in subscriptions or logs."
+    },
+    {
+      "id": 8,
+      "name": "residential-failover",
+      "prompt": "住宅 IP 失效后 Claude 和 OpenAI 会不会打不开，怎么处理？",
+      "expected_output": "The skill should install residential_healthcheck.py as a systemd timer on both nodes. In auto mode it should probe the residential SOCKS outbound, change AI/Copilot rules from residential to direct on failure, change them back to residential on recovery, restart x-ui only when routing changes, and never expose SOCKS credentials."
     }
   ]
 }

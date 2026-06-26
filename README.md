@@ -185,6 +185,26 @@ unset RESIDENTIAL_SOCKS_URL
 
 这个脚本会备份 `/etc/x-ui/x-ui.db`，写入 `residential` SOCKS outbound 和 AI/Copilot 域名规则，然后重启 `x-ui`。需要在 VPS-A 和 VPS-B 都执行一次。
 
+再安装健康检查定时器：
+
+```bash
+sudo scripts/install_residential_healthcheck_timer.sh "$(pwd)"
+```
+
+定时器会运行：
+
+```bash
+python3 scripts/residential_healthcheck.py --mode auto --restart
+```
+
+行为：
+
+| 状态 | 自动动作 | 结果 |
+|---|---|---|
+| 住宅 SOCKS 正常 | AI/Copilot 路由指向 `residential` | Claude/OpenAI 走住宅出口 |
+| 住宅 SOCKS 失效 | AI/Copilot 路由改为 `direct` | Claude/OpenAI 降级到普通出口，避免完全打不开 |
+| 住宅 SOCKS 恢复 | AI/Copilot 路由改回 `residential` | 自动恢复住宅出口 |
+
 服务端只把高风控 AI/Copilot 类域名转到 `residential` outbound：
 
 ```text
@@ -263,6 +283,13 @@ print([r for r in data.get('routing', {}).get('rules', []) if r.get('outboundTag
 PY
 ```
 
+Healthcheck verification:
+
+```bash
+python3 scripts/residential_healthcheck.py --mode check
+systemctl list-timers --all linkray-residential-healthcheck.timer
+```
+
 ## Node2 IP Change Checklist
 
 When VPS-B changes IP, update these together:
@@ -296,15 +323,19 @@ Then re-fetch `/clash/<subId>`, run `mihomo -t`, and run delay checks for every 
 | [SKILL.md](SKILL.md) | Agent entrypoint and deployed workflow rules |
 | [references/cluster-blueprint.md](references/cluster-blueprint.md) | Command-level deployment and repair blueprint |
 | [scripts/configure_residential_outbound.py](scripts/configure_residential_outbound.py) | Writes the optional server-side residential Xray outbound into 3X-UI |
+| [scripts/residential_healthcheck.py](scripts/residential_healthcheck.py) | Checks residential SOCKS health and toggles AI/Copilot routes between `residential` and `direct` |
+| [scripts/install_residential_healthcheck_timer.sh](scripts/install_residential_healthcheck_timer.sh) | Installs the systemd timer for automatic residential failover |
 | [agents/openai.yaml](agents/openai.yaml) | Display metadata for OpenAI/Codex-style agent surfaces |
 | [evals/evals.json](evals/evals.json) | Behavioral expectations for this deployed scope |
 | [tests/test_configure_residential_outbound.py](tests/test_configure_residential_outbound.py) | Regression tests for residential outbound configuration |
+| [tests/test_residential_healthcheck.py](tests/test_residential_healthcheck.py) | Regression tests for residential healthcheck failover |
 
 ## Local Checks
 
 ```bash
 python3 ~/.codex/skills/readme-generator/scripts/check_readme_refs.py .
 python3 -m unittest tests.test_configure_residential_outbound
+python3 -m unittest tests.test_residential_healthcheck
 git diff --check
 ```
 
