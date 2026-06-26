@@ -3,39 +3,33 @@
   "evals": [
     {
       "id": 0,
-      "name": "single-point-subscription",
-      "prompt": "我只有一台 VPS，想单点部署 3x-ui，但也要创建用户和一个订阅地址。",
-      "expected_output": "The skill should choose single-point mode: one VPS hosts the main panel, local node inbounds, and subscription server. It should enable /sub/<subId>, /clash/<subId>, and /json/<subId>, create one stable subId per user, and not require remote node registration."
+      "name": "verified-two-node-cluster",
+      "prompt": "用 LinkRay-deploy 部署当前已经验证成功的两台 VPS 方案。",
+      "expected_output": "The skill should use only the verified two-node architecture: VPS-A hosts the main 3X-UI panel, subscription service, Nginx, local node, and Clash/Mihomo wrapper; VPS-B is a remote 3X-UI node managed by VPS-A."
     },
     {
       "id": 1,
-      "name": "two-vps-one-subscription",
-      "prompt": "我有两个 VPS，想用 3x-ui 汇聚成一个订阅地址，还要能创建用户。",
-      "expected_output": "The skill should propose a main-panel architecture: VPS-A hosts the main panel and subscription server, VPS-B is added as a remote node, both nodes have distinct node domains, the main panel publishes /sub/<subId>, /clash/<subId>, and /json/<subId>. It must not recommend running the old single-node flow unchanged, disabling subscriptions, or keeping the remote node panel only on 127.0.0.1 without a private tunnel."
+      "name": "verified-profile-set",
+      "prompt": "这个部署完成后订阅里应该有哪些节点和协议？",
+      "expected_output": "The skill should state the verified profile set on both node1 and node2: VLESS Reality, VLESS Reality Vision, Trojan Reality, Hysteria2, VLESS TLS WS 443, and VLESS XHTTP TLS 443, for 12 profiles total."
     },
     {
       "id": 2,
-      "name": "multi-protocol-subid-aggregation",
-      "prompt": "两个节点，每个节点 VLESS、Trojan、Shadowsocks，一个用户只给一个订阅。",
-      "expected_output": "The skill should explain that one stable subId is attached to every selected inbound across node1 and node2. The resulting subscription includes node1-vless, node2-vless, node1-trojan, node2-trojan, node1-ss, node2-ss. It should warn that VLESS/XHTTP fits Cloudflare while Trojan/SS are usually direct/DNS-only unless deliberately wrapped."
+      "name": "wrapper-rules",
+      "prompt": "Clash/Mihomo 订阅需要有哪些规则组？",
+      "expected_output": "The skill should require the wrapper-backed /clash/<subId> output with 23 visible strategy groups, 20 meta-rules-dat providers, 41 rules, preserved subscription-userinfo, and final MATCH,漏网之鱼."
     },
     {
       "id": 3,
       "name": "secure-remote-node-api",
       "prompt": "主面板怎么管理第二台 VPS，面板端口要不要开放？",
-      "expected_output": "The skill should require remote node API reachability from the main panel through WireGuard/Tailscale/private network or firewall allowlisting only the main panel IP. It should reject public world-open panel API ports and note that localhost binding blocks remote management unless an explicit tunnel or overlay route is used."
+      "expected_output": "The skill should require VPS-B API reachability from VPS-A only, through private networking or firewall allowlisting only VPS-A. It should reject world-open panel/API ports."
     },
     {
       "id": 4,
-      "name": "reality-and-hysteria2-boundaries",
-      "prompt": "两个节点，协议都要配置 Reality，同时也要 Hysteria2。",
-      "expected_output": "The skill should explain that Reality is not a universal wrapper. It should create or recommend VLESS Reality and Trojan Reality profiles on DNS-only direct hostnames, keep Hysteria2 as protocol=hysteria with version=2 and streamSettings.network=hysteria, and avoid forcing Reality onto Shadowsocks or Hysteria2. It should verify TCP Reality ports and UDP Hysteria2 listening."
-    },
-    {
-      "id": 5,
-      "name": "linkray-branding",
-      "prompt": "把 3x-ui 面板显示名改成 LinkRay，不能影响使用。",
-      "expected_output": "The skill should change only the reverse-proxy presentation layer, such as Nginx sub_filter rewriting 3X-UI/3x-ui/X-UI to LinkRay, and should not rename the x-ui service, /usr/local/x-ui, x-ui.db, API paths, node tags, or subscription paths. It should verify the fetched JS output and handle browser cache."
+      "name": "node2-ip-change",
+      "prompt": "node2 换 IP 后要改哪些地方？",
+      "expected_output": "The skill should update DNS, main-panel nodes.address, VPS-B share_addr values, firewall allow rules, Nginx WS/XHTTP upstreams, and wrapper server rewrite maps together, then re-fetch and retest the wrapper-backed subscription."
     }
   ]
 }

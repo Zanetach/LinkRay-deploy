@@ -1,123 +1,43 @@
-# LinkRay Deployment Blueprint
+# LinkRay Verified Cluster Blueprint
 
-Use this reference after `SKILL.md` triggers. It describes the target state and command-level rules for a LinkRay-branded 3X-UI single-point or cluster deployment with one subscription URL.
+This blueprint documents only the LinkRay deployment that has been verified through this skill: a two-node 3X-UI cluster, one main subscription authority, one wrapper-backed Clash/Mihomo subscription, and the deployed routing rules.
 
 ## Target State
 
-Single-point example:
-
 ```text
 VPS-A
-  3x-ui main panel
-  subscription server
-  local node1 inbounds
-
-User imports only:
-  https://sub.example.com/sub/<subId>
-```
-
-DNS:
-
-```text
-panel.example.com  A/AAAA  VPS-A
-sub.example.com    A/AAAA  VPS-A
-node1.example.com  A/AAAA  VPS-A
-```
-
-Two VPS example:
-
-```text
-VPS-A
-  3x-ui main panel
-  subscription server
-  local node1 inbounds
+  3X-UI main panel
+  subscription server on 127.0.0.1
+  Nginx public HTTPS entrypoint
+  localhost Clash/Mihomo wrapper
+  node1 inbounds
 
 VPS-B
-  3x-ui remote panel/node
+  3X-UI remote node
   node2 inbounds
 
-User imports only:
-  https://sub.example.com/sub/<subId>
+User imports:
+  https://sub.example.com/clash/<subId>
 ```
 
 DNS:
 
 ```text
-panel.example.com  A/AAAA  VPS-A
-sub.example.com    A/AAAA  VPS-A
-node1.example.com  A/AAAA  VPS-A
-node2.example.com  A/AAAA  VPS-B
+panel.example.com   A/AAAA  VPS-A
+sub.example.com     A/AAAA  VPS-A
+direct1.example.com A/AAAA  VPS-A
+direct2.example.com A/AAAA  VPS-B
+node1.example.com   A/AAAA  VPS-A
+node2.example.com   A/AAAA  VPS-B
+xhttp1.example.com  A/AAAA  VPS-A
+xhttp2.example.com  A/AAAA  VPS-B
 ```
 
-Use Cloudflare orange-cloud only where the selected protocol transport supports it. VLESS XHTTP over TLS can sit behind Cloudflare; Reality, Hysteria2, direct Trojan, and Shadowsocks should use DNS-only direct hostnames unless a separate compatible fronting layer is deliberately designed.
+Cloudflare orange-cloud is used only for HTTP-compatible WS/XHTTP hosts. Reality and Hysteria2 use VPS IPs or DNS-only hostnames.
 
-Choose single-point when the user has one VPS or explicitly asks for "单点". Choose cluster when the user has two or more VPS nodes or asks for remote-node failover/aggregation.
+## Main Panel Settings
 
-## 0. Cloudflare DNS Layout
-
-For a two-VPS Cloudflare-backed deployment, create records before issuing certificates:
-
-```text
-panel.example.com  A  VPS-A-IP  DNS only
-sub.example.com    A  VPS-A-IP  DNS only
-node1.example.com  A  VPS-A-IP  Proxied when using VLESS/XHTTP over TLS
-node2.example.com  A  VPS-B-IP  Proxied when using VLESS/XHTTP over TLS
-direct1.example.com A VPS-A-IP  DNS only for Reality/Trojan/Hysteria2/SS
-direct2.example.com A VPS-B-IP  DNS only for Reality/Trojan/Hysteria2/SS
-```
-
-Use DNS-only for `panel` and `sub` during first deployment. `sub` can remain DNS-only; only proxy it if the subscription domain is intentionally fronted by Cloudflare and tested with the selected clients.
-
-Do not point Reality or Hysteria2 links at orange-cloud hostnames. In subscriptions, use the `nodeN.example.com` orange-cloud hosts only for XHTTP profiles and use direct DNS-only hostnames for TCP/UDP direct protocols.
-
-Use Cloudflare API tokens with least privilege:
-
-```text
-Zone:DNS:Edit
-Zone:Zone:Read
-Scope: selected zone only
-```
-
-Verify the token before running acme.sh or DNS automation:
-
-```bash
-curl -fsS -H "Authorization: Bearer $CF_Token" \
-  https://api.cloudflare.com/client/v4/user/tokens/verify
-```
-
-## 1. Install 3X-UI
-
-Install 3X-UI on every VPS, pinning a release if repeatability matters:
-
-```bash
-bash <(curl -Ls https://raw.githubusercontent.com/MHSanaei/3x-ui/master/install.sh)
-```
-
-For unattended installs, 3X-UI supports `XUI_NONINTERACTIVE=1` and writes credentials to `/etc/x-ui/install-result.env`. Read that file as root and store secrets outside chat logs.
-
-Use the same 3X-UI version on all nodes when possible.
-
-Recommended unattended install shape for small clusters:
-
-```bash
-XUI_NONINTERACTIVE=1 \
-XUI_PANEL_PORT=2053 \
-XUI_SSL_MODE=none \
-bash <(curl -Ls https://raw.githubusercontent.com/MHSanaei/3x-ui/master/install.sh)
-```
-
-For the main panel, bind the panel to localhost after install:
-
-```bash
-x-ui setting -listenIP 127.0.0.1
-systemctl restart x-ui
-```
-
-For a public fallback remote-node API, the remote node panel may listen on `0.0.0.0`, but firewall it so only VPS-A can reach the panel port.
-
-## 2. Main Panel Settings
-
-On VPS-A, configure the panel as the control plane:
+On VPS-A, configure 3X-UI as the control plane:
 
 ```text
 Web domain: panel.example.com
@@ -128,10 +48,10 @@ Subscription domain: sub.example.com
 Sub path: /sub/
 JSON path: /json/
 Clash path: /clash/
-Clash enable: true when Clash/Mihomo users exist
+Clash enable: true
 ```
 
-When Clash/Mihomo is the primary target client, avoid making users manually change `/sub/` to `/clash/`. Keep the route paths distinct, but make the panel's displayed generic subscription URI point at the Clash route:
+Displayed subscription URI:
 
 ```text
 subPath=/sub/
@@ -142,700 +62,70 @@ subClashPath=/clash/
 subClashURI=https://sub.example.com/clash/
 ```
 
-Do not set `subPath=/clash/`; 3X-UI already registers `/clash/<subId>`, and duplicate routes can crash the panel at startup.
+Do not set `subPath=/clash/`. 3X-UI already registers `/clash/<subId>`, and duplicate routes can crash the panel at startup.
 
-If editing SQLite directly, stop `x-ui`, update `settings`, then restart. Prefer UI/API where available because setting keys may change between releases.
+The public Clash handoff path is always wrapper-backed. Keep native `/sub/<subId>` and native 3X-UI `/clash/<subId>` reachable locally for source and diagnostics, but publish `https://sub.example.com/clash/<subId>` through the enhanced wrapper.
 
-Never apply a blanket `subEnable=false` on the main panel.
+## Remote Node API
 
-3X-UI v3 API examples use the panel base path:
+VPS-B must be reachable from VPS-A by private network or firewall allowlisting only VPS-A.
 
-```bash
-BASE="/<main-base-path>"
-API="http://127.0.0.1:2053${BASE}/panel/api"
-
-curl -fsS -X POST \
-  -H "Authorization: Bearer <MAIN_API_TOKEN>" \
-  "$API/setting/all"
-```
-
-`/panel/api/setting/all` and `/panel/api/setting/update` are POST endpoints. Do not diagnose them as broken just because GET returns 404.
-
-When `subDomain` is set, the subscription server rejects wrong Host headers with 403. Local tests must include the Host header:
+Minimum firewall rule shape on VPS-B:
 
 ```bash
-curl -H 'Host: sub.example.com' http://127.0.0.1:10882/sub/<subId>
+ufw allow from <VPS-A-IP> to any port <panel-port> proto tcp
+ufw deny <panel-port>/tcp
 ```
 
-Without the Host header, a 403 is expected and does not mean the `subId` is missing.
-
-## 2.1 TLS Certificates and Auto-Renewal
-
-For Cloudflare-managed domains, prefer DNS-01 wildcard certificates. Install on every VPS that terminates HTTPS:
+Verification from VPS-A:
 
 ```bash
-export CF_Token='<cloudflare-api-token>'
-export CF_Email='<account-email>'
-
-curl -fsSL https://get.acme.sh | sh -s email="$CF_Email"
-/root/.acme.sh/acme.sh --set-default-ca --server letsencrypt
-/root/.acme.sh/acme.sh --issue --dns dns_cf \
-  -d example.com -d '*.example.com' --keylength ec-256
-
-mkdir -p /etc/ssl/example
-/root/.acme.sh/acme.sh --install-cert -d example.com --ecc \
-  --fullchain-file /etc/ssl/example/fullchain.cer \
-  --key-file /etc/ssl/example/example.com.key \
-  --reloadcmd 'systemctl reload nginx || true'
-chmod 600 /etc/ssl/example/example.com.key
+curl -fsS -H "Authorization: Bearer <NODE_API_TOKEN>" \
+  https://<node-management-host>:<panel-port>/<base-path>/panel/api/server/status
 ```
 
-acme.sh installs a cron entry automatically. Verify it:
+Do not leave the VPS-B panel/API port open to the world.
 
-```bash
-/root/.acme.sh/acme.sh --list
-crontab -l | grep acme.sh
-```
+## Deployed Profiles
 
-The `Renew` time from `acme.sh --list` is the next renewal window, not the certificate expiry date. Certificates should renew automatically before expiry and reload Nginx through the install hook.
-
-## 3. Reverse Proxy
-
-Terminate HTTPS for public names with Nginx/Caddy. Keep 3X-UI web and subscription listeners on localhost where possible.
-
-Nginx pattern for the main panel, subscription, and local XHTTP node:
-
-```nginx
-map $http_upgrade $connection_upgrade {
-    default upgrade;
-    '' close;
-}
-
-server {
-    listen 80;
-    listen [::]:80;
-    server_name panel.example.com sub.example.com node1.example.com;
-    return 301 https://$host$request_uri;
-}
-
-server {
-    listen 443 ssl http2;
-    listen [::]:443 ssl http2;
-    server_name panel.example.com;
-
-    ssl_certificate /etc/ssl/example/fullchain.cer;
-    ssl_certificate_key /etc/ssl/example/example.com.key;
-
-    location / {
-        proxy_http_version 1.1;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection $connection_upgrade;
-        proxy_read_timeout 3600s;
-        proxy_send_timeout 3600s;
-        proxy_buffering off;
-        proxy_request_buffering off;
-        proxy_pass http://127.0.0.1:2053;
-    }
-}
-
-server {
-    listen 443 ssl http2;
-    listen [::]:443 ssl http2;
-    server_name sub.example.com;
-
-    ssl_certificate /etc/ssl/example/fullchain.cer;
-    ssl_certificate_key /etc/ssl/example/example.com.key;
-
-    location / {
-        proxy_http_version 1.1;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_read_timeout 3600s;
-        proxy_send_timeout 3600s;
-        proxy_buffering off;
-        proxy_pass http://127.0.0.1:10882;
-    }
-}
-
-server {
-    listen 443 ssl http2;
-    listen [::]:443 ssl http2;
-    server_name node1.example.com;
-
-    ssl_certificate /etc/ssl/example/fullchain.cer;
-    ssl_certificate_key /etc/ssl/example/example.com.key;
-
-    location = / { return 204; }
-
-    location ^~ /<xhttp-path-node1> {
-        proxy_http_version 1.1;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection $connection_upgrade;
-        proxy_read_timeout 3600s;
-        proxy_send_timeout 3600s;
-        proxy_buffering off;
-        proxy_request_buffering off;
-        proxy_pass http://127.0.0.1:<xray-local-port-node1>;
-    }
-
-    location / { return 404; }
-}
-```
-
-For remote node VPS-B, use the same `nodeN.example.com` server block and proxy its XHTTP path to the node-local Xray port, for example `127.0.0.1:10002`.
-
-### Optional LinkRay Presentation Branding
-
-If the operator wants the panel to display `LinkRay`, change only the reverse-proxy presentation layer. Do not rename the `x-ui` service, `/usr/local/x-ui`, `x-ui.db`, API paths, node tags, or subscription paths.
-
-Nginx can rewrite bundled frontend text without rebuilding 3X-UI:
-
-```nginx
-location / {
-    proxy_http_version 1.1;
-    proxy_set_header Host $host;
-    proxy_set_header X-Real-IP $remote_addr;
-    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-    proxy_set_header X-Forwarded-Proto $scheme;
-    proxy_set_header Accept-Encoding "";
-    add_header Cache-Control "no-store, no-cache, must-revalidate" always;
-    sub_filter_once off;
-    sub_filter_types application/javascript text/javascript text/css application/json;
-    sub_filter 3X-UI LinkRay;
-    sub_filter 3x-ui LinkRay;
-    sub_filter X-UI LinkRay;
-    sub_filter Linkray LinkRay;
-    proxy_pass http://127.0.0.1:2053;
-}
-```
-
-Verify branding with a direct resource fetch, not only the browser cache:
-
-```bash
-curl --noproxy '*' --resolve panel.example.com:443:<VPS-A-IP> \
-  -ks https://panel.example.com/<basePath>/assets/<login-js> |
-  grep -E 'LinkRay|Linkray|3X-UI'
-```
-
-## 4. Remote Node API Access
-
-Skip this section in single-point mode. Local inbounds on the main panel do not need a remote node registration.
-
-In cluster mode, 3X-UI nodes are remote 3X-UI panels. The main panel polls each node's API, including `/panel/api/server/status`, with the node's API token.
-
-Preferred access:
+Create the same verified profile set on node1 and node2:
 
 ```text
-VPS-A <-> VPS-B over WireGuard/Tailscale/private VPC
-Node address in main panel: remote private IP
-Node panel port: private only
-```
-
-Acceptable public fallback:
-
-```bash
-# On VPS-B, allow only main panel IP to reach panel API port.
-ufw allow from <VPS_A_IP> to any port <XUI_PANEL_PORT> proto tcp
-ufw deny <XUI_PANEL_PORT>/tcp
-```
-
-Do not set the remote node panel `webListen` to `127.0.0.1` unless VPS-A reaches it through SSH tunnel, WireGuard loopback routing, or another explicit private path.
-
-When adding a node in the main panel, fill:
-
-```text
-Name: node2
-Scheme: https
-Address: node2 private IP or management domain
-Port: remote 3X-UI panel port
-Base Path: remote panel base path
-API Token: remote panel API token
-TLS verify mode: verify, pin, or mTLS; avoid skip except for first smoke test
-Inbound sync mode: all for small clusters; selected for production
-```
-
-Click test/probe and require `online` before creating remote inbounds.
-
-API example for testing and adding a remote node from the main panel:
-
-```bash
-curl -fsS -X POST \
-  -H "Authorization: Bearer <MAIN_API_TOKEN>" \
-  -H "Content-Type: application/json" \
-  "$MAIN_API/nodes/test" \
-  --data-binary '{
-    "scheme": "http",
-    "address": "VPS-B-IP",
-    "port": 2053,
-    "basePath": "/<remote-base-path>/",
-    "apiToken": "<REMOTE_API_TOKEN>",
-    "enable": true,
-    "allowPrivateAddress": false
-  }'
-```
-
-If using public fallback management, verify the intended boundary:
-
-```bash
-# From VPS-A: must succeed.
-curl -fsS -H "Authorization: Bearer <REMOTE_API_TOKEN>" \
-  http://VPS-B-IP:2053/<remote-base-path>/panel/api/server/status
-
-# From the operator laptop or arbitrary public source: should timeout or fail.
-curl --connect-timeout 5 http://VPS-B-IP:2053/
-```
-
-## 5. Inbounds Per Node and Protocol
-
-Single-point minimal:
-
-```text
+node1-vless-reality
+node1-vless-reality-vision
+node1-trojan-reality
+node1-hysteria2
+node1-vless-ws-tls
 node1-vless-xhttp-tls
-```
 
-Cluster minimal:
-
-```text
-node1-vless-xhttp-tls
+node2-vless-reality
+node2-vless-reality-vision
+node2-trojan-reality
+node2-hysteria2
+node2-vless-ws-tls
 node2-vless-xhttp-tls
 ```
 
-Add optional protocols only when requested:
+Expected full subscription count: `12` profiles.
 
-```text
-node1-trojan-tls
-node1-ss-2022
-node1-vless-reality
-node1-trojan-reality
-node1-hysteria2
+Direct profiles:
 
-# Cluster mode also adds:
-node2-trojan-tls
-node2-ss-2022
-node2-vless-reality
-node2-trojan-reality
-node2-hysteria2
-```
+- Reality and Reality Vision: TCP direct on VPS IP or DNS-only hostname.
+- Trojan Reality: TCP direct on VPS IP or DNS-only hostname.
+- Hysteria2: UDP direct, Xray `protocol=hysteria`, version `2`, `streamSettings.network=hysteria`.
 
-Use distinct tags/remarks. If using Cloudflare, keep protocol/transport compatibility in mind:
+443 profiles:
 
-| Protocol | Good default | Notes |
-|---|---|---|
-| VLESS | XHTTP + TLS + Nginx path | Best fit for Cloudflare/CDN fronting |
-| VLESS WS | WS + TLS + Nginx path | Compatibility fallback on `443/tcp`; prefer XHTTP for new CDN paths |
-| VLESS Reality | TCP + Reality direct | DNS-only direct hostname; do not orange-cloud |
-| VLESS Reality Vision | TCP + Reality direct + Vision flow | Good direct profile when the client supports Vision |
-| Trojan Reality | TCP + Reality direct | Supported by 3X-UI share links; DNS-only direct hostname |
-| Hysteria2 | Hysteria transport + TLS direct | UDP/QUIC; must listen on UDP, not TCP |
-| Trojan | TLS direct | Usually DNS-only unless fallback/SNI is designed |
-| Shadowsocks 2022 | Direct port | Do not route through Cloudflare HTTP proxy |
-| TUIC v5 | Sidecar only | Not a native Xray/3X-UI inbound; use sing-box or tuic-server only when explicitly requested |
+- VLESS TLS WS: Nginx owns public `443/tcp` and forwards a random WS path to a localhost-only Xray port.
+- VLESS XHTTP TLS: Nginx owns public `443/tcp` and forwards a separate random XHTTP path to a localhost-only Xray port.
 
-Reality is not a blanket switch for every protocol. For "all protocols should have Reality", create Reality-capable VLESS/Trojan profiles and keep Hysteria2 and Shadowsocks as their own direct protocols.
+Do not bind Xray directly to public `443/tcp` for WS/XHTTP.
 
-For single-point local inbounds, create them directly on the main panel. For remote node inbounds, create or sync them from the main panel so the main database knows their `node_id` and can include them in subscriptions.
-
-For Nginx-terminated XHTTP, the Xray inbound should listen on localhost with transport security `none`, and the subscription should advertise the public TLS host through `externalProxy` or Host overrides:
-
-```json
-{
-  "listen": "127.0.0.1",
-  "port": 10001,
-  "protocol": "vless",
-  "streamSettings": {
-    "network": "xhttp",
-    "security": "none",
-    "xhttpSettings": {
-      "path": "/xh-random",
-      "host": "node1.example.com",
-      "mode": "auto"
-    },
-    "sockopt": {
-      "trustedXForwardedFor": ["127.0.0.1", "::1"],
-      "acceptProxyProtocol": false
-    },
-    "externalProxy": [
-      {
-        "forceTls": "tls",
-        "dest": "node1.example.com",
-        "port": 443,
-        "remark": "node1.example.com",
-        "sni": "node1.example.com",
-        "fingerprint": "chrome"
-      }
-    ]
-  }
-}
-```
-
-`trustedXForwardedFor` avoids Xray splitHTTP/XHTTP warnings when a local reverse proxy sets forwarded headers.
-
-### 5.1 Add 443 WS/XHTTP Profiles to an Existing Node
-
-Use this when the deployment already has working Reality/Hysteria2 direct profiles and the operator wants a HTTPS/CDN fallback without disturbing direct ports.
-
-Target shape:
-
-```text
-VLESS TLS WS:
-  public: ws.example.com:443 /ws-<random>
-  nginx -> 127.0.0.1:<local-ws-port>
-  xray: listen 127.0.0.1, security none, network ws
-
-VLESS XHTTP TLS:
-  public: xhttp.example.com:443 /xh-<random>
-  nginx -> 127.0.0.1:<local-xhttp-port>
-  xray: listen 127.0.0.1, security none, network xhttp
-```
-
-Rules:
-
-- Nginx owns public `443/tcp`.
-- Xray listens on localhost-only ports, for example `10003` for WS and `10004` for XHTTP.
-- The subscription advertises the public `host:443` through `streamSettings.externalProxy`.
-- Use separate random paths: `/ws-<random>` and `/xh-<random>`.
-- Reality/Vision/Hysteria2 links must not use Cloudflare orange-cloud hosts. XHTTP/WS may use orange-cloud hosts.
-- Before touching SQLite or Nginx, back up both:
-
-```bash
-TS=$(date +%Y%m%d%H%M%S)
-cp /etc/x-ui/x-ui.db "/etc/x-ui/x-ui.db.bak.before-443-profiles-$TS"
-cp /etc/nginx/conf.d/cyclelink.conf "/etc/nginx/conf.d/cyclelink.conf.bak.before-443-profiles-$TS"
-```
-
-#### 5.1.1 VLESS TLS WS 443
-
-Create a VLESS inbound with:
-
-```json
-{
-  "remark": "node1-vless-tls-ws",
-  "listen": "127.0.0.1",
-  "port": 10003,
-  "protocol": "vless",
-  "settings": {
-    "clients": "<copy enabled clients from the clients table>",
-    "decryption": "none",
-    "encryption": "none",
-    "fallbacks": []
-  },
-  "streamSettings": {
-    "network": "ws",
-    "security": "none",
-    "wsSettings": {
-      "path": "/ws-<random>",
-      "host": "ws.example.com"
-    },
-    "externalProxy": [{
-      "forceTls": "tls",
-      "dest": "ws.example.com",
-      "port": 443,
-      "remark": "",
-      "sni": "ws.example.com",
-      "fingerprint": "chrome"
-    }]
-  }
-}
-```
-
-Prefer `wsSettings.host` instead of `wsSettings.headers.Host`; recent Xray builds warn that Host in headers is deprecated.
-
-Add the Nginx path inside the node HTTPS server block:
-
-```nginx
-location ^~ /ws-<random> {
-    proxy_http_version 1.1;
-    proxy_set_header Host $host;
-    proxy_set_header X-Real-IP $remote_addr;
-    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-    proxy_set_header X-Forwarded-Proto $scheme;
-    proxy_set_header Upgrade $http_upgrade;
-    proxy_set_header Connection $connection_upgrade;
-    proxy_read_timeout 3600s;
-    proxy_send_timeout 3600s;
-    proxy_buffering off;
-    proxy_request_buffering off;
-    proxy_pass http://127.0.0.1:10003;
-}
-```
-
-Expected Clash/Mihomo proxy shape after refresh:
-
-```yaml
-- name: node1-vless-tls-ws
-  type: vless
-  server: ws.example.com
-  port: 443
-  tls: true
-  network: ws
-  ws-opts:
-    path: /ws-<random>
-    headers:
-      Host: ws.example.com
-```
-
-#### 5.1.2 VLESS XHTTP TLS 443
-
-Create a VLESS inbound with:
-
-```json
-{
-  "remark": "node1-vless-xhttp-tls",
-  "listen": "127.0.0.1",
-  "port": 10004,
-  "protocol": "vless",
-  "settings": {
-    "clients": "<copy enabled clients from the clients table>",
-    "decryption": "none",
-    "encryption": "none",
-    "fallbacks": []
-  },
-  "streamSettings": {
-    "network": "xhttp",
-    "security": "none",
-    "xhttpSettings": {
-      "path": "/xh-<random>",
-      "host": "xhttp.example.com",
-      "mode": "auto",
-      "xPaddingBytes": "100-1000",
-      "scMaxBufferedPosts": 30,
-      "scStreamUpServerSecs": "20-80"
-    },
-    "sockopt": {
-      "tcpcongestion": "bbr",
-      "trustedXForwardedFor": ["127.0.0.1", "::1"],
-      "acceptProxyProtocol": false
-    },
-    "externalProxy": [{
-      "forceTls": "tls",
-      "dest": "xhttp.example.com",
-      "port": 443,
-      "remark": "",
-      "sni": "xhttp.example.com",
-      "fingerprint": "chrome"
-    }]
-  }
-}
-```
-
-Add the Nginx path inside the node HTTPS server block:
-
-```nginx
-location ^~ /xh-<random> {
-    proxy_http_version 1.1;
-    proxy_set_header Host $host;
-    proxy_set_header X-Real-IP $remote_addr;
-    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-    proxy_set_header X-Forwarded-Proto $scheme;
-    proxy_set_header Upgrade $http_upgrade;
-    proxy_set_header Connection $connection_upgrade;
-    proxy_read_timeout 3600s;
-    proxy_send_timeout 3600s;
-    proxy_buffering off;
-    proxy_request_buffering off;
-    proxy_pass http://127.0.0.1:10004;
-}
-```
-
-Expected Clash/Mihomo proxy shape after refresh:
-
-```yaml
-- name: node1-vless-xhttp-tls
-  type: vless
-  server: xhttp.example.com
-  port: 443
-  tls: true
-  network: xhttp
-  xhttp-opts:
-    host: xhttp.example.com
-    mode: auto
-    path: /xh-<random>
-```
-
-#### 5.1.3 SQLite Consistency Requirements
-
-When repairing or creating these inbounds directly in SQLite, update both layers:
-
-```text
-inbounds.settings.clients
-clients table
-client_inbounds table
-```
-
-The `settings.clients` JSON is still used by parts of 3X-UI subscription generation. If only `client_inbounds` is updated, the panel may show a relationship but the generated subscription can miss or mis-render the profile.
-
-For each enabled client:
-
-```text
-client.email      -> settings.clients[].email
-client.uuid       -> settings.clients[].id
-client.sub_id     -> settings.clients[].subId
-client.total_gb   -> settings.clients[].totalGB
-client.expiry_time -> settings.clients[].expiryTime
-client.enable     -> settings.clients[].enable
-```
-
-Then attach the client to the new inbound:
-
-```sql
-insert or ignore into client_inbounds (client_id, inbound_id, flow_override, created_at)
-values (<client_id>, <new_inbound_id>, '', <now_ms>);
-```
-
-#### 5.1.4 Restart and Verify
-
-After DB and Nginx edits:
-
-```bash
-nginx -t
-systemctl reload nginx
-systemctl restart x-ui
-sleep 2
-systemctl is-active nginx
-systemctl is-active x-ui
-ss -tlnp | grep -E ':(10003|10004|443) '
-```
-
-Fetch the actual user-facing profile:
-
-```bash
-curl -fsS "https://sub.example.com/clash/<subId>" -o /tmp/linkray.yaml
-mihomo -t -f /tmp/linkray.yaml
-```
-
-Run a real delay probe through Mihomo's controller:
-
-```bash
-python3 - <<'PY'
-import yaml
-p = yaml.safe_load(open('/tmp/linkray.yaml'))
-p['mixed-port'] = 19203
-p['external-controller'] = '127.0.0.1:19205'
-p['secret'] = ''
-open('/tmp/linkray-run.yaml', 'w').write(yaml.safe_dump(p, allow_unicode=True, sort_keys=False))
-PY
-
-rm -rf /tmp/mihomo-linkray
-mkdir -p /tmp/mihomo-linkray
-mihomo -d /tmp/mihomo-linkray -f /tmp/linkray-run.yaml >/tmp/linkray-run.log 2>&1 &
-echo $! >/tmp/mihomo-linkray.pid
-sleep 3
-
-python3 - <<'PY'
-import urllib.parse, urllib.request
-for name in ['node1-vless-tls-ws', 'node1-vless-xhttp-tls']:
-    url = 'http://127.0.0.1:19205/proxies/' + urllib.parse.quote(name, safe='') + '/delay?timeout=10000&url=http://www.gstatic.com/generate_204'
-    try:
-        with urllib.request.urlopen(url, timeout=12) as r:
-            print(name, r.read().decode())
-    except Exception as exc:
-        print(name, 'ERROR', repr(exc))
-PY
-
-kill "$(cat /tmp/mihomo-linkray.pid)" >/dev/null 2>&1 || true
-```
-
-Also verify the generic subscription includes the same links for clients such as Shadowrocket:
-
-```bash
-curl -fsS "https://sub.example.com/sub/<subId>" | base64 -d | grep -E 'type=(ws|xhttp)|vless-tls-ws|vless-xhttp-tls'
-```
-
-For VLESS/Trojan Reality, create TCP direct inbounds on DNS-only hostnames:
-
-```json
-{
-  "protocol": "vless",
-  "port": 9444,
-  "streamSettings": {
-    "network": "tcp",
-    "security": "reality",
-    "tcpSettings": {"acceptProxyProtocol": false, "header": {"type": "none"}},
-    "realitySettings": {
-      "target": "www.yahoo.com:443",
-      "serverNames": ["www.yahoo.com"],
-      "privateKey": "<server-private-key>",
-      "shortIds": ["<8-hex-short-id>"],
-      "settings": {
-        "publicKey": "<server-public-key>",
-        "fingerprint": "chrome",
-        "spiderX": "/"
-      }
-    }
-  },
-  "share_addr_strategy": "custom",
-  "share_addr": "direct1.example.com"
-}
-```
-
-Generate keys on the target node:
-
-```bash
-/usr/local/x-ui/bin/xray-linux-amd64 x25519
-```
-
-Use a separate port for Trojan Reality, for example `9445/tcp`, to keep troubleshooting simple. 3X-UI can emit `trojan://...security=reality...` links when the inbound stream security is Reality.
-
-If one node's VLESS Reality port is reachable but intermittently fails Mihomo delay tests, move only that inbound to another allowed direct TCP port such as `8443/tcp`, update both the main-panel row and the remote node's local row, then restart `x-ui` and re-fetch the subscription. Keep the Reality `sni`/`servername` aligned with the server-side `serverNames`.
-
-Do not treat every TLS-looking site as an equally good Reality target. If clients show `Timeout` even though DNS is correct and `nc -vz <node-ip> <port>` succeeds, change only `realitySettings.target` and `realitySettings.serverNames` first, then retest. In practice, `www.yahoo.com:443`/`www.yahoo.com` is a safer default than `www.cloudflare.com:443`, `www.microsoft.com:443`, or Apple/iCloud targets for this deployment shape. Xray may explicitly warn against Apple/iCloud Reality targets, and those should not be the default even if they pass a short smoke test.
-
-If Mihomo or a GUI client still reports Reality timeout, test the same inbound with Xray itself before changing the deployment. A temporary Xray client running on another VPS should connect to the node's public IP and request `https://www.gstatic.com/generate_204` through a local SOCKS inbound. If this returns HTTP 204, the server-side Reality key pair, short ID, SNI, and user credential are valid; continue debugging the client, delay probe, or local route instead of rewriting the server.
-
-Also check for duplicate client identity before blaming the protocol. In 3X-UI 3.x cluster mode, remote nodes can retain stale clients even after the main panel changed names. Two clients that only differ by case, such as `alice` and `Alice`, or two rows with the same UUID/password/auth/subId, can make Xray fail with `User alice already exists`. `systemctl is-active x-ui` may still return active because the web panel is running, so always confirm Xray ports with `ss -tulnp` and inspect `/usr/local/x-ui/bin/config.json`.
-
-For Hysteria2, keep the protocol as `hysteria` and set version `2` in settings. The transport must be `network: "hysteria"`:
-
-```json
-{
-  "protocol": "hysteria",
-  "port": 8444,
-  "settings": {
-    "version": 2,
-    "clients": [{"auth": "<auth-token>", "email": "user001", "subId": "<subId>", "enable": true}]
-  },
-  "streamSettings": {
-    "network": "hysteria",
-    "security": "tls",
-    "hysteriaSettings": {
-      "version": 2,
-      "auth": "",
-      "udpIdleTimeout": 60,
-      "masquerade": {"type": ""}
-    },
-    "tlsSettings": {
-      "serverName": "direct1.example.com",
-      "alpn": ["h3"],
-      "certificates": [{
-        "certificateFile": "/etc/ssl/example/fullchain.cer",
-        "keyFile": "/etc/ssl/example/example.com.key"
-      }]
-    }
-  },
-  "share_addr_strategy": "custom",
-  "share_addr": "direct1.example.com"
-}
-```
-
-After creating or editing Hysteria2, verify `ss -lunp | grep :8444`. If `8444` appears only as TCP, the inbound is not Hysteria2 even if the remark says so.
-
-For remote node direct inbounds, verify both databases when using direct SQLite/API repair: the main panel row must keep `node_id` and `share_addr_strategy=custom`, while the remote node local row must exist and listen. Node sync may overwrite the main row back to `share_addr_strategy=node`; re-check the decoded subscription and fix the main row or the node sync payload before handoff.
-
-## 6. Users and Subscription Aggregation
+## Users And Aggregation
 
 The aggregation key is `subId`.
 
-Create a client once per user identity:
+Create one client identity per user:
 
 ```text
 email/remark: user001
@@ -846,31 +136,9 @@ limitIp: concurrent IP cap or 0
 enable: true
 ```
 
-Attach that same client identity to every inbound that should appear in the subscription:
+Attach that same user identity to all 12 deployed inbounds. Do not create one user per protocol.
 
-```text
-user001_<random>
-  node1-vless-xhttp-tls
-  node1-trojan-tls
-  node1-vless-reality
-  node1-trojan-reality
-  node1-shadowsocks-2022
-  node1-hysteria2
-
-# Cluster mode also attaches:
-  node2-vless-xhttp-tls
-  node2-trojan-tls
-  node2-vless-reality
-  node2-trojan-reality
-  node2-shadowsocks-2022
-  node2-hysteria2
-```
-
-Do not create unrelated subIds per protocol. That fragments the subscription and makes quota/expiry management inconsistent.
-
-Trojan TLS and Trojan Reality are separate profiles and can coexist in the same subscription. Use direct DNS-only hostnames for both, and verify each advertised host:port before handing the subscription to a user.
-
-3X-UI v3 subscriptions query normalized `clients` and `client_inbounds` rows, not only the legacy `settings.clients` JSON. Prefer API/UI creation so both the JSON and normalized tables are updated. If debugging an empty subscription, inspect both:
+If a subscription is empty, inspect both normalized tables:
 
 ```bash
 sqlite3 /etc/x-ui/x-ui.db \
@@ -879,11 +147,7 @@ sqlite3 /etc/x-ui/x-ui.db \
   "select client_id,inbound_id from client_inbounds;"
 ```
 
-An enabled client with the right `sub_id` must be linked to every inbound that should appear in the subscription.
-
-## 6.1 Enhanced Native Clash Profile
-
-Use this when the operator wants to keep 3X-UI as the only user, traffic, and node authority, but still needs a full Mihomo profile with visible strategy groups and routing rules. This does not require Sub-Store.
+## Clash/Mihomo Wrapper
 
 Shape:
 
@@ -891,29 +155,18 @@ Shape:
 client -> https://sub.example.com/clash/<subId>
   -> Nginx /clash/<subId>
     -> localhost wrapper 127.0.0.1:3012/clash/<subId>
-      -> reads native 3X-UI source http://127.0.0.1:<sub-port>/clash/<subId> with Host: sub.example.com
+      -> reads native 3X-UI source http://127.0.0.1:<sub-port>/clash/<subId>
       -> returns enhanced Clash/Mihomo YAML
 ```
 
-Keep these 3X-UI settings native:
-
-```sql
-update settings set value='https://sub.example.com/sub/' where key='subURI';
-update settings set value='https://sub.example.com/clash/' where key='subClashURI';
-```
-
-Do not change `subPath=/sub/` or `subClashPath=/clash/`.
-
 The wrapper must:
 
-- read the native 3X-UI `/clash/<subId>` YAML as its source
-- preserve the native `proxies:` entries
-- replace the native minimal `proxy-groups` and `rules` with the v2ray-agent-style groups and MetaCubeX `mrs` rule-providers documented below
-- ensure every visible strategy group has an actual rule path; `DNS_Proxy`, `Telegram`, and `国内媒体` must not be UI-only groups
-- keep site-specific `DIRECT` overrides for provider, admin, payment, and Cloudflare challenge resources before broad overseas routing such as `geolocation-!cn`
-- optionally rewrite direct node `server` values from DNS names to VPS IPs when clients use fake-ip DNS, while preserving Reality `sni`/`servername` and Hysteria2 `sni`
+- read the native 3X-UI `/clash/<subId>` YAML as source
+- preserve native `proxies:`
+- replace minimal native `proxy-groups` and `rules`
 - forward `subscription-userinfo`, `profile-title`, `profile-update-interval`, and `profile-web-page-url`
 - stay bound to `127.0.0.1`
+- rewrite direct node `server` values from DNS names to VPS IPs when clients use fake-IP DNS, while preserving Reality `sni`/`servername` and Hysteria2 `sni`
 
 Nginx route:
 
@@ -932,187 +185,9 @@ location ~ ^/clash/([A-Za-z0-9_-]+)/?$ {
 }
 ```
 
-The generic `/sub/<subId>` path can remain direct 3X-UI native output.
+## Strategy Groups
 
-Validate:
-
-```bash
-curl -fsSI 'https://sub.example.com/clash/<subId>' |
-  grep -iE '^(subscription-userinfo|profile-title|profile-update-interval|profile-web-page-url):'
-
-curl -fsS 'https://sub.example.com/clash/<subId>' -o /tmp/linkray-clash.yaml
-grep -nE '^(mixed-port|proxies|proxy-groups|rule-providers|rules):' /tmp/linkray-clash.yaml
-grep -nE '^[[:space:]]*- name: (自动选择|故障转移|负载均衡|节点选择|流媒体|手动切换|全球代理|DNS_Proxy|Telegram|Google|YouTube|Netflix|Spotify|HBO|Bing|Microsoft|OpenAI|ClaudeAI|Disney|GitHub|国内媒体|本地直连|漏网之鱼)$' /tmp/linkray-clash.yaml
-python3 - <<'PY'
-import yaml
-with open('/tmp/linkray-clash.yaml') as f:
-    data = yaml.safe_load(f)
-for proxy in data.get('proxies', []):
-    print(proxy.get('name'), proxy.get('server'), proxy.get('sni'), proxy.get('servername'))
-PY
-mihomo -t -f /tmp/linkray-clash.yaml
-```
-
-Reality timeout validation should test more than a single green click in the UI. A reliable handoff test is three rounds across all proxies through Mihomo's delay API; Reality nodes should consistently return a delay rather than `503 Service Unavailable` or `Timeout`. If Hysteria2 is stable but Reality is intermittent, focus on Reality target/site choice and direct TCP port choice, not Sub-Store, rule providers, or the Clash wrapper.
-
-For direct anti-block mode, the native 3X-UI source should already contain only:
-
-```text
-VLESS Reality
-Trojan Reality
-Hysteria2
-```
-
-Keep Sub-Store removed in this mode unless format conversion or multi-source subscription processing becomes necessary again.
-
-## 6.2 Subscription Adapter with Sub-Store
-
-Use this only when the native 3X-UI subscription imports incorrectly in Clash/Mihomo clients, for example:
-
-```text
-yaml: unmarshal errors:
-  line 1: cannot unmarshal !!str ... into config.RawConfig
-  line 1: cannot unmarshal !!seq into config.RawConfig
-```
-
-Those errors mean the client received the wrong top-level format for a full Clash/Mihomo profile. A raw base64 link list is a string, and a JSON share list is a sequence. A Clash/Mihomo profile importer expects a YAML mapping, usually starting with `proxies:`.
-
-Run Sub-Store only on the main panel VPS. Remote nodes do not need Docker, Node.js, or a Sub-Store process.
-
-Node.js direct deployment shape:
-
-```bash
-# On VPS-A only.
-mkdir -p /opt/sub-store/data
-git clone https://github.com/sub-store-org/Sub-Store.git /opt/sub-store/app
-cd /opt/sub-store/app/backend
-pnpm install --frozen-lockfile
-pnpm bundle:esbuild
-```
-
-Systemd environment:
-
-```text
-SUB_STORE_BACKEND_API_HOST=127.0.0.1
-SUB_STORE_BACKEND_API_PORT=3011
-SUB_STORE_BACKEND_PREFIX=1
-SUB_STORE_FRONTEND_BACKEND_PATH=/api-ss-<random>
-SUB_STORE_DATA_BASE_PATH=/opt/sub-store/data
-```
-
-Systemd service:
-
-```ini
-[Unit]
-Description=Sub-Store backend
-After=network-online.target
-Wants=network-online.target
-
-[Service]
-Type=simple
-WorkingDirectory=/opt/sub-store/app/backend
-EnvironmentFile=/etc/default/sub-store
-ExecStart=/usr/local/bin/node /opt/sub-store/app/backend/sub-store.min.js
-Restart=always
-RestartSec=3
-
-[Install]
-WantedBy=multi-user.target
-```
-
-The `SUB_STORE_BACKEND_PREFIX=1` line is required. Without it, `SUB_STORE_FRONTEND_BACKEND_PATH` is only frontend metadata and the random public path returns 404.
-
-Nginx pattern:
-
-```nginx
-server {
-    listen 443 ssl http2;
-    server_name store.example.com;
-
-    ssl_certificate /etc/ssl/example/fullchain.cer;
-    ssl_certificate_key /etc/ssl/example/example.com.key;
-
-    location = / {
-        return 302 https://sub-store.vercel.app/?api=https://store.example.com/api-ss-<random>;
-    }
-
-    location ^~ /api-ss-<random>/ {
-        proxy_http_version 1.1;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_read_timeout 3600s;
-        proxy_send_timeout 3600s;
-        proxy_buffering off;
-        proxy_pass http://127.0.0.1:3011;
-    }
-
-    location / { return 404; }
-}
-```
-
-Create a full adapter subscription from the 3X-UI Clash source:
-
-```bash
-API='http://127.0.0.1:3011/api-ss-<random>'
-
-curl -fsS -X POST \
-  -H 'Content-Type: application/json' \
-  --data-binary '{
-    "name": "linkray-full",
-    "source": "remote",
-    "url": "https://sub.example.com/clash/<subId>",
-    "ua": "clash-meta",
-    "process": [],
-    "ignoreFailedRemoteSub": true
-  }' \
-  "$API/api/subs"
-```
-
-Public user-facing adapted URL:
-
-```text
-https://store.example.com/api-ss-<random>/download/linkray-full?target=ClashMeta&includeUnsupportedProxy=true&prettyYaml=true
-```
-
-For automatic 3X-UI UI-generated user links, prefer a dynamic route on the existing subscription domain. This avoids creating one Sub-Store subscription item per user.
-
-Do not return only the Sub-Store `proxies:` fragment if the target client imports complete Clash/Mihomo profiles. Some clients validate the YAML but show no usable nodes because there is no `proxy-groups` entry. Add a small localhost wrapper that fetches the dynamic Sub-Store output and returns a full profile containing `mixed-port`, `proxies`, visible `proxy-groups`, `rule-providers`, and `rules`.
-
-Wrapper service shape:
-
-```text
-127.0.0.1:3012/store/<subId>
-  -> reads 127.0.0.1:3011/api-ss-<random>/download/linkray-dynamic?...url=https://sub.example.com/clash/<subId>
-  -> reads response metadata from https://sub.example.com/clash/<subId>
-  -> returns full Clash/Mihomo YAML profile
-```
-
-The wrapper must stay localhost-only. It is a presentation layer, not a node service.
-
-Forward subscription metadata headers from the native 3X-UI source to the adapted response. At minimum, forward `subscription-userinfo`; also forward `profile-title`, `profile-update-interval`, `profile-web-page-url`, and `content-disposition` when present. Clients such as FlClash use `subscription-userinfo` to display used traffic, total traffic, and expiry. If this header is dropped, the adapted profile can still import and connect, but the profile card will not show traffic quota or time.
-
-For direct anti-block mode, filter the adapted `proxies:` list to direct-resistant protocols only:
-
-```text
-keep:
-  vless + reality
-  trojan + reality
-  hysteria2
-
-remove from the user-facing profile:
-  vless-xhttp / xhttp over Cloudflare
-  trojan-tls
-  shadowsocks-2022
-  any node that uses a Cloudflare orange-cloud hostname or preferred IP path
-```
-
-The original 3X-UI inbounds can be disabled after the direct profile is verified. Back up `/etc/x-ui/x-ui.db` before disabling inbounds, then restart `x-ui` and verify only the direct ports remain listening.
-
-When routing rules are requested, the wrapper should add visible strategy groups and map `meta-rules-dat` providers to those groups. The user should see v2ray-agent-style service groups in the client proxy page, not only raw proxy nodes.
-
-Required strategy groups for the full profile:
+Required `23` visible strategy groups:
 
 ```text
 自动选择
@@ -1140,199 +215,42 @@ GitHub
 漏网之鱼
 ```
 
-Example group shape:
+Do not add duplicate English `AUTO`.
 
-```yaml
-proxy-groups:
-  - name: 自动选择
-    type: url-test
-    url: http://www.gstatic.com/generate_204
-    interval: 300
-    tolerance: 80
-    proxies:
-      - node1-vless-reality
-      - node2-vless-xhttp
-  - name: 故障转移
-    type: fallback
-    url: http://www.gstatic.com/generate_204
-    interval: 300
-    tolerance: 80
-    proxies:
-      - node1-vless-reality
-      - node2-vless-xhttp
-  - name: 负载均衡
-    type: load-balance
-    url: http://www.gstatic.com/generate_204
-    interval: 300
-    strategy: consistent-hashing
-    proxies:
-      - node1-vless-reality
-      - node2-vless-xhttp
-  - name: 节点选择
-    type: select
-    proxies:
-      - 手动切换
-      - 自动选择
-      - 故障转移
-      - 负载均衡
-      - DIRECT
-      - node1-vless-reality
-      - node2-vless-xhttp
-  - name: OpenAI
-    type: select
-    proxies:
-      - 节点选择
-      - 自动选择
-      - 故障转移
-      - node1-vless-reality
-      - node2-vless-xhttp
+## Rule Providers
+
+Required `20` providers:
+
+```text
+private
+category-ads-all
+private-ip
+cn
+geolocation-!cn
+openai
+github
+google
+youtube
+netflix
+spotify
+hbo
+bing
+microsoft
+disney
+anthropic
+telegram-domain
+telegram
+media-cn
+cn-ip
 ```
 
-Use the actual proxy names extracted from the Sub-Store `proxies:` output; the names above are placeholders.
+All providers use `format: mrs` from MetaCubeX `meta-rules-dat`.
+
+## Routing Rules
+
+Required `41` rules, in order:
 
 ```yaml
-rule-providers:
-  private:
-    type: http
-    behavior: domain
-    format: mrs
-    interval: 86400
-    path: ./ruleset/geosite-private.mrs
-    url: "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geosite/private.mrs"
-  category-ads-all:
-    type: http
-    behavior: domain
-    format: mrs
-    interval: 86400
-    path: ./ruleset/geosite-category-ads-all.mrs
-    url: "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geosite/category-ads-all.mrs"
-  private-ip:
-    type: http
-    behavior: ipcidr
-    format: mrs
-    interval: 86400
-    path: ./ruleset/geoip-private.mrs
-    url: "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geoip/private.mrs"
-  cn:
-    type: http
-    behavior: domain
-    format: mrs
-    interval: 86400
-    path: ./ruleset/geosite-cn.mrs
-    url: "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geosite/cn.mrs"
-  geolocation-!cn:
-    type: http
-    behavior: domain
-    format: mrs
-    interval: 86400
-    path: ./ruleset/geosite-geolocation-not-cn.mrs
-    url: "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geosite/geolocation-!cn.mrs"
-  openai:
-    type: http
-    behavior: domain
-    format: mrs
-    interval: 86400
-    path: ./ruleset/geosite-openai.mrs
-    url: "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geosite/openai.mrs"
-  github:
-    type: http
-    behavior: domain
-    format: mrs
-    interval: 86400
-    path: ./ruleset/geosite-github.mrs
-    url: "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geosite/github.mrs"
-  google:
-    type: http
-    behavior: domain
-    format: mrs
-    interval: 86400
-    path: ./ruleset/geosite-google.mrs
-    url: "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geosite/google.mrs"
-  youtube:
-    type: http
-    behavior: domain
-    format: mrs
-    interval: 86400
-    path: ./ruleset/geosite-youtube.mrs
-    url: "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geosite/youtube.mrs"
-  netflix:
-    type: http
-    behavior: domain
-    format: mrs
-    interval: 86400
-    path: ./ruleset/geosite-netflix.mrs
-    url: "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geosite/netflix.mrs"
-  spotify:
-    type: http
-    behavior: domain
-    format: mrs
-    interval: 86400
-    path: ./ruleset/geosite-spotify.mrs
-    url: "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geosite/spotify.mrs"
-  hbo:
-    type: http
-    behavior: domain
-    format: mrs
-    interval: 86400
-    path: ./ruleset/geosite-hbo.mrs
-    url: "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geosite/hbo.mrs"
-  bing:
-    type: http
-    behavior: domain
-    format: mrs
-    interval: 86400
-    path: ./ruleset/geosite-bing.mrs
-    url: "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geosite/bing.mrs"
-  microsoft:
-    type: http
-    behavior: domain
-    format: mrs
-    interval: 86400
-    path: ./ruleset/geosite-microsoft.mrs
-    url: "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geosite/microsoft.mrs"
-  disney:
-    type: http
-    behavior: domain
-    format: mrs
-    interval: 86400
-    path: ./ruleset/geosite-disney.mrs
-    url: "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geosite/disney.mrs"
-  anthropic:
-    type: http
-    behavior: domain
-    format: mrs
-    interval: 86400
-    path: ./ruleset/geosite-anthropic.mrs
-    url: "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geosite/anthropic.mrs"
-  telegram-domain:
-    type: http
-    behavior: domain
-    format: mrs
-    interval: 86400
-    path: ./ruleset/geosite-telegram.mrs
-    url: "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geosite/telegram.mrs"
-  telegram:
-    type: http
-    behavior: ipcidr
-    format: mrs
-    interval: 86400
-    path: ./ruleset/geoip-telegram.mrs
-    url: "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geoip/telegram.mrs"
-  media-cn:
-    type: http
-    behavior: domain
-    format: mrs
-    interval: 86400
-    path: ./ruleset/geosite-category-media-cn.mrs
-    url: "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geosite/category-media-cn.mrs"
-  cn-ip:
-    type: http
-    behavior: ipcidr
-    format: mrs
-    interval: 86400
-    path: ./ruleset/geoip-cn.mrs
-    url: "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geoip/cn.mrs"
-
 rules:
   - IP-CIDR,127.0.0.0/8,DIRECT,no-resolve
   - IP-CIDR,10.0.0.0/8,DIRECT,no-resolve
@@ -1377,138 +295,49 @@ rules:
   - MATCH,漏网之鱼
 ```
 
-Validate with `mihomo -t`. If the client only shows `PROXY`, or still shows a duplicate English `AUTO` group after the wrapper was changed, it is using an old cached profile or the wrapper is returning generic groups. Delete and re-import the subscription after changing the wrapper.
+## Server Hardening
 
-```nginx
-server {
-    server_name sub.example.com;
-
-    location ~ ^/store/([A-Za-z0-9_-]+)/?$ {
-        set $linkray_subid $1;
-        proxy_http_version 1.1;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_read_timeout 3600s;
-        proxy_send_timeout 3600s;
-        proxy_buffering off;
-        proxy_pass http://127.0.0.1:3012/store/$linkray_subid;
-    }
-
-    location / {
-        proxy_pass http://127.0.0.1:10882;
-    }
-}
-```
-
-Then update only the displayed 3X-UI subscription URIs:
-
-```sql
-update settings
-set value='https://sub.example.com/store/'
-where key in ('subURI', 'subClashURI');
-```
-
-Do not change `subPath=/sub/`, `subClashPath=/clash/`, or the native 3X-UI `/clash/<subId>` route. Sub-Store uses the native Clash route as its source.
-
-The UI-created user's copied subscription should then be:
-
-```text
-https://sub.example.com/store/<subId>
-```
-
-Verify it starts with a YAML mapping and includes the expected node count:
-
-```bash
-curl -fsS 'https://store.example.com/api-ss-<random>/download/linkray-full?target=ClashMeta&includeUnsupportedProxy=true&prettyYaml=true' |
-  tee /tmp/linkray-full.yaml |
-  awk 'NR==1 {print}'
-
-grep -c '^[[:space:]]*name: ' /tmp/linkray-full.yaml
-
-curl -fsS 'https://sub.example.com/store/<subId>' |
-  awk 'NR==1 {print}'
-
-curl -fsSI 'https://sub.example.com/store/<subId>' |
-  grep -iE '^(subscription-userinfo|profile-title|profile-update-interval|profile-web-page-url):'
-
-curl -fsS 'https://sub.example.com/store/<subId>' -o /tmp/linkray-store.yaml
-grep -nE '^(mixed-port|proxies|proxy-groups|rules):' /tmp/linkray-store.yaml
-python3 - <<'PY'
-import yaml
-with open('/tmp/linkray-store.yaml') as f:
-    data = yaml.safe_load(f)
-for proxy in data.get('proxies', []):
-    print(proxy.get('name'), proxy.get('type'), proxy.get('server'), proxy.get('network'), bool(proxy.get('reality-opts')))
-PY
-grep -nE '^[[:space:]]*- name: (自动选择|故障转移|负载均衡|节点选择|流媒体|手动切换|全球代理|DNS_Proxy|Telegram|Google|YouTube|Netflix|Spotify|HBO|Bing|Microsoft|OpenAI|ClaudeAI|Disney|GitHub|国内媒体|本地直连|漏网之鱼)$' /tmp/linkray-store.yaml
-grep -nE '^(rule-providers|rules):|RULE-SET' /tmp/linkray-store.yaml
-grep -c '^[[:space:]]*name: ' /tmp/linkray-store.yaml
-mihomo -t -f /tmp/linkray-store.yaml
-
-for host in ca.example.com la.example.com; do
-  nc -vz -w 5 "$host" 9444
-  nc -vz -w 5 "$host" 9445
-done
-```
-
-## 6.3 Server Hardening
-
-Enable BBR on every VPS:
+Enable BBR on both VPS nodes:
 
 ```bash
 modprobe tcp_bbr 2>/dev/null || true
-cat >/etc/sysctl.d/99-cyclelink-bbr.conf <<'EOF'
+cat >/etc/sysctl.d/99-linkray-bbr.conf <<'EOF'
 net.core.default_qdisc=fq
 net.ipv4.tcp_congestion_control=bbr
 EOF
 sysctl --system
 sysctl net.ipv4.tcp_congestion_control net.core.default_qdisc
-lsmod | grep -E '(^tcp_bbr|bbr)' || true
 ```
 
-Configure UFW only after confirming SSH access. Example for VPS-A:
+Configure UFW after SSH is confirmed:
 
 ```bash
-ufw --force reset
 ufw default deny incoming
 ufw default allow outgoing
-ufw allow 2222/tcp
+ufw allow <ssh-port>/tcp
 ufw allow 80/tcp
 ufw allow 443/tcp
-ufw allow 9444/tcp  # VLESS Reality, when enabled
-ufw allow 9445/tcp  # Trojan Reality, when enabled
-ufw allow 8444/udp  # Hysteria2, when enabled
+ufw allow 9444/tcp
+ufw allow 9445/tcp
+ufw allow 8444/udp
 ufw --force enable
 ufw status verbose
 ```
 
-Example for VPS-B public fallback node API:
+On VPS-B, add the VPS-A-only API allow rule before the deny rule:
 
 ```bash
-ufw --force reset
-ufw default deny incoming
-ufw default allow outgoing
-ufw allow 2222/tcp
-ufw allow 80/tcp
-ufw allow 443/tcp
-ufw allow from <VPS-A-IP> to any port 2053 proto tcp
-ufw deny 2053/tcp
-ufw allow 9444/tcp  # VLESS Reality, when enabled
-ufw allow 9445/tcp  # Trojan Reality, when enabled
-ufw allow 8444/udp  # Hysteria2, when enabled
-ufw --force enable
-ufw status verbose
+ufw allow from <VPS-A-IP> to any port <panel-port> proto tcp
+ufw deny <panel-port>/tcp
 ```
 
 Configure Fail2Ban for the actual SSH port:
 
 ```bash
-cat >/etc/fail2ban/jail.d/cyclelink-sshd.local <<'EOF'
+cat >/etc/fail2ban/jail.d/linkray-sshd.local <<'EOF'
 [sshd]
 enabled = true
-port = 2222
+port = <ssh-port>
 backend = systemd
 maxretry = 5
 findtime = 10m
@@ -1518,58 +347,61 @@ EOF
 fail2ban-server -t
 systemctl enable --now fail2ban
 systemctl restart fail2ban
-fail2ban-client status
 fail2ban-client status sshd
 ```
 
-Do not add broad Nginx Fail2Ban jails when node domains are behind Cloudflare orange-cloud unless the jail is Cloudflare-aware; otherwise bans may target Cloudflare edge IPs instead of real clients.
+## Verification
 
-## 7. Verification
-
-Before handing over the subscription:
+Before handoff:
 
 ```bash
-# On every VPS
-systemctl is-active x-ui
-ss -tlnp | grep -E ':(443|10882|<panel-port>|9444|9445|9446|10003|10004) '
-ss -lunp | grep -E ':(8444) ' || true
+# Services and ports
+systemctl is-active x-ui nginx
+ss -tlnp | grep -E ':(443|10882|<panel-port>|9444|9445|<local-ws-port>|<local-xhttp-port>) '
+ss -lunp | grep -E ':(8444) '
 
-# Cluster mode only: from VPS-A to each remote node
+# VPS-A can reach VPS-B management API
 curl -fsS -H "Authorization: Bearer <NODE_API_TOKEN>" \
   https://<node-management-host>:<panel-port>/<base-path>/panel/api/server/status
 
-# Public subscription smoke tests
+# Public subscriptions
 curl -I https://sub.example.com/sub/<subId>
 curl -I https://sub.example.com/clash/<subId>
 curl -I https://sub.example.com/json/<subId>
 
-# Decode the generic subscription and count links.
-curl -fsS https://sub.example.com/sub/<subId> | base64 -d
+# Native source contains expected schemes
+curl -fsS https://sub.example.com/sub/<subId> | base64 -d | \
+  grep -E 'security=reality|hysteria2://|type=ws|type=xhttp'
 
-# Confirm expected schemes/security combinations.
-curl -fsS https://sub.example.com/sub/<subId> | base64 -d | grep -E 'security=reality|hysteria2://|type=ws|type=xhttp'
+# Wrapper output is the enhanced profile
+curl -fsS https://sub.example.com/clash/<subId> -o /tmp/linkray-clash.yaml
+mihomo -t -f /tmp/linkray-clash.yaml
+grep -nE '^(proxy-groups|rule-providers|rules):' /tmp/linkray-clash.yaml
+grep -nE '^[[:space:]]*- name: (自动选择|故障转移|负载均衡|节点选择|流媒体|手动切换|全球代理|DNS_Proxy|Telegram|Google|YouTube|Netflix|Spotify|HBO|Bing|Microsoft|OpenAI|ClaudeAI|Disney|GitHub|国内媒体|本地直连|漏网之鱼)$' /tmp/linkray-clash.yaml
 
-# Confirm TLS and source routing without local proxy or fake-IP DNS.
-curl --noproxy '*' --resolve panel.example.com:443:<VPS-A-IP> \
-  -o /dev/null -w '%{http_code} %{ssl_verify_result}\n' \
-  https://panel.example.com/<basePath>/
-
-# Confirm BBR and Fail2Ban.
+# System hardening
 sysctl net.ipv4.tcp_congestion_control net.core.default_qdisc
 fail2ban-client status sshd
-
-# Confirm acme.sh renewal is installed.
-/root/.acme.sh/acme.sh --list
-crontab -l | grep acme.sh
 ```
 
-Then import the Clash/Mihomo subscription in a client and verify it contains every expected node/protocol remark exactly once. For each new 443 WS/XHTTP profile, use Mihomo's controller delay API against the exact proxy name; a syntactically valid profile is not enough.
+Then import `https://sub.example.com/clash/<subId>` in a Clash/Mihomo client and verify all `12` expected profiles appear once.
 
-Expected count example for two matching nodes with VLESS Reality, VLESS Reality Vision, Trojan Reality, Hysteria2, VLESS TLS WS, and VLESS XHTTP TLS: 12 profiles total. The node2 XHTTP profile should use its own orange-cloud hostname such as `xhttp2.example.com`, while Reality and Hysteria2 should use the node2 VPS IP or DNS-only direct hostname.
+## Node2 IP Change Checklist
 
-Expected single-node mixed-mode example after adding WS and XHTTP fallbacks: VLESS Reality, VLESS Reality Vision, Trojan Reality, Hysteria2, VLESS TLS WS, and VLESS XHTTP TLS.
+When VPS-B IP changes, update these together:
 
-## 8. Output Format
+```text
+Cloudflare DNS for direct2/node2/xhttp2
+VPS-A main-panel nodes.address
+VPS-B share_addr values
+VPS-B firewall allow rules for VPS-A
+VPS-A Nginx WS/XHTTP upstreams
+wrapper server rewrite map
+```
+
+Then re-fetch `/clash/<subId>`, run `mihomo -t`, and run delay checks for every node2 profile.
+
+## Output Format
 
 Return:
 
@@ -1577,34 +409,13 @@ Return:
 Main panel: https://panel.example.com/<basePath>
 Nodes: node1 online, node2 online
 User: user001
-Generic subscription: https://sub.example.com/sub/<subId>
 Clash/Mihomo: https://sub.example.com/clash/<subId>
-JSON: https://sub.example.com/json/<subId>
-Included profiles:
-  - node1-vless
-  - node2-vless
-  - node1-trojan
-  - node2-trojan
+Generic diagnostic: https://sub.example.com/sub/<subId>
+JSON diagnostic: https://sub.example.com/json/<subId>
+Included profiles: 12
 Security:
-  - Node API reachable only from VPS-A/private network
+  - VPS-B API reachable only from VPS-A/private network
   - Subscription public over HTTPS
   - Panel admin access restricted
-```
-
-For single-point output, omit remote node API status:
-
-```text
-Main panel: https://panel.example.com/<basePath>
-Mode: single-point
-Local node: node1
-User: user001
-Generic subscription: https://sub.example.com/sub/<subId>
-Clash/Mihomo: https://sub.example.com/clash/<subId>
-JSON: https://sub.example.com/json/<subId>
-Included profiles:
-  - node1-vless
-  - node1-trojan
-Security:
-  - Subscription public over HTTPS
-  - Panel admin access restricted
+  - BBR and Fail2Ban enabled
 ```
