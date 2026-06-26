@@ -1,19 +1,36 @@
 # LinkRay Deploy
 
-> Verified operational skill for the current two-node LinkRay 3X-UI deployment.
-
-LinkRay Deploy documents one deployed system, not a generic VPN template: VPS-A runs the main 3X-UI panel, subscription service, Nginx, local node, and Clash/Mihomo wrapper; VPS-B runs the remote node managed by VPS-A. Users import one wrapper-backed Clash/Mihomo subscription.
-
-```text
-Primary user subscription:
-https://sub.example.com/clash/<subId>
-```
-
-## Visual Overview
+> 已验证的 LinkRay 双节点 3X-UI 部署技能：一个主面板、一个远程节点、一个 Clash/Mihomo 订阅入口。
 
 ![LinkRay two-node deployment hero](assets/linkray-hero.png)
 
-The generated hero image shows the deployed shape: user clients enter through one secure subscription path, VPS-A owns the public handoff and local wrapper, and the enhanced profile fans out to node1 and node2.
+## 项目介绍
+
+LinkRay Deploy 是一个用于复现和维护当前已验证 LinkRay 部署形态的 Codex/agent skill。它不是通用 VPN 面板模板，而是把这次已经跑通的 3X-UI 双 VPS 方案固化成可执行的部署和运维文档。
+
+部署完成后，系统由 VPS-A 和 VPS-B 两台服务器组成：
+
+- VPS-A：主 3X-UI 面板、订阅服务、Nginx HTTPS 入口、本地 node1、Clash/Mihomo profile wrapper。
+- VPS-B：远程 3X-UI node2，由 VPS-A 主面板统一管理。
+- 用户侧：只导入一个订阅地址，默认使用 wrapper 增强后的 Clash/Mihomo 配置。
+
+```text
+用户主订阅：
+https://sub.example.com/clash/<subId>
+```
+
+上图展示的是当前项目的实际部署关系：用户客户端从一个安全订阅入口进入，VPS-A 负责公开访问、订阅生成和本地 wrapper，最终配置分发到 node1 和 node2。
+
+## 这个项目解决什么
+
+| 问题 | LinkRay Deploy 的处理方式 |
+|---|---|
+| 多节点订阅分散 | 使用一个稳定 `subId` 聚合 node1/node2 的所有已验证协议 |
+| Clash/Mihomo 原生订阅规则不完整 | 用本地 wrapper 输出完整 YAML，包含策略组、rule-providers 和 rules |
+| 主面板和远程节点边界不清 | VPS-A 是唯一订阅和管理 authority，VPS-B 只作为远程节点 |
+| WS/XHTTP 与 443 端口冲突 | Nginx 占用公网 443，Xray 只监听 localhost 随机路径 |
+| Reality/Hysteria2 被错误放到 Cloudflare 小云朵 | Reality/Hysteria2 使用 VPS IP 或 DNS-only 主机名 |
+| node2 换 IP 容易漏改 | 文档固定 DNS、节点地址、share_addr、防火墙、Nginx upstream、wrapper rewrite map 同步项 |
 
 ## Deployed Shape
 
@@ -26,6 +43,25 @@ The generated hero image shows the deployed shape: user clients enter through on
 | Subscription profile | Wrapper-backed Clash/Mihomo YAML |
 | Profile count | `12` profiles total |
 | Rules output | `23` strategy groups, `20` providers, `41` routing rules |
+
+## 支持的协议
+
+当前 README 只记录已经通过该 skill 固化的协议集合。每个协议在 node1 和 node2 上各一份，完整订阅共 `12` 个 profiles。
+
+| 协议/Profile | 节点 | 公网入口 | 说明 |
+|---|---|---|---|
+| VLESS Reality | node1 + node2 | VPS IP 或 DNS-only 域名 | 直连 TCP Reality |
+| VLESS Reality Vision | node1 + node2 | VPS IP 或 DNS-only 域名 | Vision flow 的 Reality 直连配置 |
+| Trojan Reality | node1 + node2 | VPS IP 或 DNS-only 域名 | Trojan over Reality，独立端口 |
+| Hysteria2 | node1 + node2 | VPS IP 或 DNS-only 域名，UDP | Xray `protocol=hysteria`，version `2` |
+| VLESS TLS WS 443 | node1 + node2 | Nginx `443/tcp` 随机 WS path | 兼容性 HTTPS fallback |
+| VLESS XHTTP TLS 443 | node1 + node2 | Nginx `443/tcp` 随机 XHTTP path | 当前 HTTPS/CDN 路径 |
+
+协议边界：
+
+- Reality、Reality Vision、Trojan Reality、Hysteria2 不走 Cloudflare orange-cloud。
+- WS/XHTTP 可以走 Cloudflare HTTP-compatible 路径。
+- Xray 不直接绑定公网 `443/tcp`；公网 443 由 Nginx 接管并转发到 localhost-only Xray 入站。
 
 ## Domains
 
@@ -40,9 +76,7 @@ The generated hero image shows the deployed shape: user clients enter through on
 | `xhttp1.example.com` | node1 XHTTP transport | Proxied for XHTTP |
 | `xhttp2.example.com` | node2 XHTTP transport | Proxied for XHTTP |
 
-Reality and Hysteria2 stay on VPS IPs or DNS-only hostnames. Cloudflare orange-cloud is used only for HTTP-compatible WS/XHTTP transports.
-
-## Verified Profiles
+## Verified Profile Set
 
 Each node exposes the same verified profile set:
 
@@ -55,7 +89,17 @@ Expected subscription total: `12` profiles.
 
 ## Clash/Mihomo Rules
 
-The wrapper keeps 3X-UI as the authority for users, quota, expiry, traffic, nodes, and native subscription data, then returns the full Clash/Mihomo profile.
+VPS-A 上的本地 wrapper 会读取 3X-UI 原生 `/clash/<subId>` 输出，保留原生 `proxies:` 和订阅流量头，再替换为完整 Clash/Mihomo profile。
+
+Wrapper 输出内容：
+
+| 项目 | 数量/行为 |
+|---|---|
+| 可见策略组 | `23` 个 |
+| `meta-rules-dat` providers | `20` 个 |
+| 路由规则 | `41` 条 |
+| 流量/到期信息 | 保留 `subscription-userinfo` |
+| 最后一条规则 | `MATCH,漏网之鱼` |
 
 Visible strategy groups:
 
