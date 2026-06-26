@@ -308,6 +308,10 @@ python3 -m unittest tests.test_configure_residential_outbound
 git diff --check
 ```
 
+## License
+
+MIT License. See [LICENSE](LICENSE).
+
 ## Scope
 
 This README intentionally describes the deployment already verified through this skill.
