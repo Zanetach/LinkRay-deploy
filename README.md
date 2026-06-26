@@ -142,9 +142,19 @@ Routing contract:
 | DoH domains | `DNS_Proxy` |
 | Telegram domain and IP rules | `Telegram` |
 | `media-cn` | `国内媒体` |
-| China domains and IPs | `本地直连` |
+| China domains and resolved China IPs | `本地直连` |
 | Overseas geolocation | `全球代理` |
 | Final fallback | `MATCH,漏网之鱼` |
+
+Domestic auto-direct contract:
+
+```text
+RULE-SET,cn,本地直连
+RULE-SET,cn-ip,本地直连
+RULE-SET,geolocation-!cn,全球代理
+```
+
+Keep `cn-ip` before `geolocation-!cn` and do not add `no-resolve` to `cn-ip`. This lets unknown domains resolve to a real IP first; if the resolved IP is in China, the request goes direct without adding one DIRECT rule per domain.
 
 `subscription-userinfo` 的来源：
 

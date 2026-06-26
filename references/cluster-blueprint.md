@@ -447,11 +447,13 @@ rules:
   - RULE-SET,disney,Disney
   - RULE-SET,anthropic,ClaudeAI
   - RULE-SET,media-cn,国内媒体
-  - RULE-SET,geolocation-!cn,全球代理
   - RULE-SET,cn,本地直连
-  - RULE-SET,cn-ip,本地直连,no-resolve
+  - RULE-SET,cn-ip,本地直连
+  - RULE-SET,geolocation-!cn,全球代理
   - MATCH,漏网之鱼
 ```
+
+Keep `cn-ip` before `geolocation-!cn`, and do not use `no-resolve` on `cn-ip`. Unknown domains can then resolve to a real destination IP; China IPs go to `本地直连` automatically. This is the generic fix for domestic business domains such as Tencent Cloud or Aliyun hosted services that are not covered by `geosite-cn`.
 
 ## Server Hardening
 

@@ -88,6 +88,7 @@ Clients
 - Do not add a residential Clash strategy group unless a separate user-visible residential inbound is intentionally created and verified. The current verified subscription remains 12 profiles.
 - Do not leave visible strategy groups as dead UI.
 - Route DoH domains to `DNS_Proxy`, Telegram domain/IP rules to `Telegram`, `media-cn` to `国内媒体`, and the final fallback to `MATCH,漏网之鱼`.
+- Keep domestic auto-direct before overseas fallback: `RULE-SET,cn,本地直连`, then `RULE-SET,cn-ip,本地直连` without `no-resolve`, then `RULE-SET,geolocation-!cn,全球代理`. This avoids adding one DIRECT rule for every domestic domain whose domain is not in `geosite-cn` but resolves to a China IP.
 - Keep Reality and Hysteria2 on VPS IPs or DNS-only hostnames.
 - Use Cloudflare orange-cloud only for WS/XHTTP.
 - Do not let Xray bind public `443/tcp` for WS/XHTTP; Nginx owns 443 and forwards random paths to localhost Xray ports.
@@ -128,6 +129,7 @@ Do not present panel-exported internal links as the primary deliverable.
 | Letting Claude/OpenAI fail when the residential IP dies | Install the residential healthcheck timer so AI/Copilot routes fall back to `direct` and recover automatically |
 | Expecting DMIT to use the residential outbound | Keep `dmit.io` as `DIRECT`; the verified residential route is only for AI/Copilot domains |
 | Provider/admin/payment pages fail after importing the subscription | Keep front-loaded `DIRECT` overrides before `geolocation-!cn` |
+| Adding endless manual DIRECT rules for domestic business domains | Use the `cn-ip` rule without `no-resolve` before `geolocation-!cn` so resolved China IPs go direct automatically |
 | Binding Xray directly to public 443 for WS/XHTTP | Keep Xray on localhost and forward Nginx paths |
 | Reusing one 443 path for WS and XHTTP | Use separate random paths |
 | Pointing Reality/Hysteria2 at Cloudflare orange-cloud names | Use DNS-only hostnames or VPS IPs |

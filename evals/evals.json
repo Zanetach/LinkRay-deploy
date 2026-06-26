@@ -54,6 +54,12 @@
       "name": "residential-failover",
       "prompt": "住宅 IP 失效后 Claude 和 OpenAI 会不会打不开，怎么处理？",
       "expected_output": "The skill should install residential_healthcheck.py as a systemd timer on both nodes. In auto mode it should probe the residential SOCKS outbound, change AI/Copilot rules from residential to direct on failure, change them back to residential on recovery, restart x-ui only when routing changes, and never expose SOCKS credentials."
+    },
+    {
+      "id": 9,
+      "name": "domestic-ip-auto-direct",
+      "prompt": "国内站点太多了，不能每个域名都加 DIRECT，怎么自动判断？",
+      "expected_output": "The skill should use the wrapper rule order RULE-SET,cn,DIRECT, then RULE-SET,cn-ip,DIRECT without no-resolve, then RULE-SET,geolocation-!cn,proxy. It should explain that unknown domains are resolved to real IPs and China IPs go direct automatically, avoiding per-domain DIRECT rules."
     }
   ]
 }
