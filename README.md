@@ -46,6 +46,19 @@ https://sub.example.com/clash/<subId>
 | Rules output | `23` strategy groups, `20` providers, `41` routing rules |
 | Residential routing | Server-side Xray outbound `residential`, not a Clash profile |
 
+## Deployment Prompts
+
+部署前应该先确认这些选项，尤其是住宅 IP。没有住宅 SOCKS 上游时，可以直接选择不启用，核心 12 个协议订阅不受影响。
+
+| 交互问题 | 默认值 | 需要提供 |
+|---|---|---|
+| 是否启用服务端住宅出口？ | 不启用 | SOCKS host、port、username、password |
+| 住宅出口用于哪些域名？ | AI/Copilot 域名 | 只在需要扩展时调整 |
+| 是否把住宅出口显示成 Clash 节点？ | 不显示 | 需要另建可见入站并单独验证 |
+| `dmit.io` 是否走住宅出口？ | 不走 | 保持 `DIRECT` |
+
+住宅出口是可选增强能力：启用后由 Xray 服务端透明分流，客户端订阅仍然只看到普通 node1/node2 profiles。
+
 ## 支持的协议
 
 当前 README 只记录已经通过该 skill 固化的协议集合。每个协议在 node1 和 node2 上各一份，完整订阅共 `12` 个 profiles。
@@ -144,6 +157,8 @@ Routing contract:
 | 用户订阅中是否显示 | 不显示 |
 | 是否计入 12 个 profiles | 不计入 |
 | Clash 是否需要住宅策略组 | 当前不需要 |
+
+部署交互点：在安装 3X-UI 和写入 Xray 模板前，先问是否启用该能力。只有在用户提供住宅 SOCKS 上游时才写入 `residential` outbound；没有提供时，不要生成空的 residential 配置。
 
 服务端只把高风控 AI/Copilot 类域名转到 `residential` outbound：
 

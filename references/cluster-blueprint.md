@@ -66,6 +66,24 @@ Do not set `subPath=/clash/`. 3X-UI already registers `/clash/<subId>`, and dupl
 
 The public Clash handoff path is always wrapper-backed. Keep native `/sub/<subId>` and native 3X-UI `/clash/<subId>` reachable locally for source and diagnostics, but publish `https://sub.example.com/clash/<subId>` through the enhanced wrapper.
 
+## Deployment Discovery Prompts
+
+Before SSH or server changes, ask these questions and record the answers:
+
+```text
+Enable server-side residential outbound for AI/Copilot domains? yes/no
+If yes: residential SOCKS host, port, username, password
+Keep residential hidden from Clash/Mihomo subscriptions? yes/no
+Route dmit.io through residential? no
+```
+
+Defaults:
+
+- Residential outbound is optional and disabled unless upstream credentials are provided.
+- Keep residential hidden from subscriptions in the verified design.
+- Keep `dmit.io` as `DIRECT`.
+- Do not create an empty `residential` outbound without a working upstream.
+
 ## Remote Node API
 
 VPS-B must be reachable from VPS-A by private network or firewall allowlisting only VPS-A.
@@ -150,6 +168,8 @@ sqlite3 /etc/x-ui/x-ui.db \
 ## Residential Outbound
 
 The verified residential IP setup is a server-side Xray outbound, not a user-visible Clash node.
+
+This capability must be surfaced during deployment discovery. Do not wait until after the profile is built to ask about it.
 
 Current contract:
 

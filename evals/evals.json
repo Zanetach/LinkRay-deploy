@@ -36,6 +36,12 @@
       "name": "residential-outbound",
       "prompt": "住宅 IP 要不要单独放进 Clash 订阅策略组？",
       "expected_output": "The skill should keep the verified residential IP as a server-side Xray socks outbound tagged residential for AI/Copilot domains only, not expose upstream SOCKS credentials in Clash/Mihomo subscriptions, not count it as an extra profile, and keep dmit.io DIRECT."
+    },
+    {
+      "id": 6,
+      "name": "deployment-prompts",
+      "prompt": "我准备按这个 skill 从零部署，怎么知道它支持住宅 IP？",
+      "expected_output": "The skill should surface residential IP as a deployment discovery prompt before SSH: ask whether to enable the server-side residential outbound, collect SOCKS upstream details only if enabled, keep it hidden from Clash/Mihomo subscriptions by default, and keep dmit.io DIRECT."
     }
   ]
 }

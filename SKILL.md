@@ -25,6 +25,7 @@ Keep all answers and deployment steps inside the verified deployed set.
    - VPS-B: IP, SSH user/port/auth, node domains, management API endpoint.
    - Root domain and DNS provider credentials.
    - Users: email/remark, quota, expiry, IP limit, and `subId` policy.
+   - Residential IP option: ask whether to enable the verified server-side residential outbound. If enabled, collect SOCKS host, port, username/password, and confirm the AI/Copilot domain list; if disabled, keep the Xray `direct` outbound.
    - Security choice for node API reachability: private network preferred; otherwise firewall allow only VPS-A.
 
 2. Read `references/cluster-blueprint.md` before executing commands or changing a server.
@@ -44,6 +45,14 @@ Keep all answers and deployment steps inside the verified deployed set.
    - Configure UFW and Fail2Ban after SSH and node API reachability are verified.
    - Verify certificate renewal, subscription decoding, node parity, wrapper-generated strategy groups/rules, and remote-node API access.
    - Output subscription URLs and admin notes.
+
+Deployment prompts must surface these optional capabilities before SSH:
+
+| Prompt | Default | Effect |
+|---|---|---|
+| Enable server-side residential outbound for AI/Copilot domains? | No, unless credentials are provided | Adds Xray `residential` SOCKS outbound and matching service-side routing rules |
+| Expose residential IP as a Clash/Mihomo node? | No | Current verified design keeps it hidden; only add a user-visible inbound after separate verification |
+| Route `dmit.io` through residential? | No | Keep `dmit.io` as `DIRECT` |
 
 ## Architecture
 
@@ -112,6 +121,7 @@ Do not present panel-exported internal links as the primary deliverable.
 | Returning rules but no visible strategy groups | Add the standard 23 strategy groups and map every `RULE-SET` |
 | Wrapper-backed profile shows no traffic quota or expiry | Compute `subscription-userinfo` globally by `subId` from the 3X-UI database; do not patch one user manually |
 | Exposing the residential SOCKS upstream in Clash subscriptions | Keep residential routing inside server-side Xray outbound rules |
+| Skipping the residential option during deployment discovery | Ask before SSH whether the operator has a residential SOCKS upstream and wants AI/Copilot domains to use it |
 | Expecting DMIT to use the residential outbound | Keep `dmit.io` as `DIRECT`; the verified residential route is only for AI/Copilot domains |
 | Provider/admin/payment pages fail after importing the subscription | Keep front-loaded `DIRECT` overrides before `geolocation-!cn` |
 | Binding Xray directly to public 443 for WS/XHTTP | Keep Xray on localhost and forward Nginx paths |
