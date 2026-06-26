@@ -4,6 +4,8 @@
 
 ![LinkRay two-node deployment hero](assets/linkray-hero.png)
 
+![LinkRay Deploy 能力总览](assets/linkray-capabilities.png)
+
 ## 项目介绍
 
 LinkRay Deploy 是一个用于复现和维护当前已验证 LinkRay 部署形态的 Codex/agent skill。它不是通用 VPN 面板模板，而是把这次已经跑通的 3X-UI 双 VPS 方案固化成可执行的部署和运维文档。
@@ -204,6 +206,22 @@ copilot.microsoft.com
 
 ## Install Skill
 
+Fresh clone install:
+
+```bash
+mkdir -p ~/.codex/skills
+git clone https://github.com/Zanetach/LinkRay-deploy.git \
+  ~/.codex/skills/LinkRay-deploy
+```
+
+Update an existing install:
+
+```bash
+git -C ~/.codex/skills/LinkRay-deploy pull --ff-only
+```
+
+Local copy install:
+
 ```bash
 mkdir -p ~/.codex/skills
 cp -R LinkRay-deploy ~/.codex/skills/
@@ -214,6 +232,8 @@ Invoke it with:
 ```text
 $LinkRay-deploy
 ```
+
+A fresh clone includes the skill entrypoint, deployment blueprint, wrapper rules, residential outbound deployment script, tests, and visual assets needed to run a new deployment from the documented prompts.
 
 ## Handoff Verification
 
